@@ -24,7 +24,7 @@
 - Works Offline after NTP is Synchronized 
 
 ### Note
-- In case the ntp server is inactive to maintain the relay switch time precision control add a 5vdc battery for esp32 and separate the 5vdc relay power supply adaptor.
+- In case the ntp server is inactive to maintain the relay switch time precision control add a 5vdc battery for esp8266 and separate the 5vdc relay power supply adaptor.
 
 # Suitable
 - Home Automation
@@ -38,6 +38,13 @@
 
 # Installation
 - Flash the firmware.bin using `0x0` offset
+
+# WiFi Key
+WiFi SSID: `ESP8266_8CH_Smart_Switch`
+Password: `ESP8266-admin`
+
+# Activation
+- Go to `wifi settings` and connect to your home wifi after the NTP is synchronized everything will works.
 
 # Schematics
 ```
