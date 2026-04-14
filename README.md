@@ -41,6 +41,7 @@
 
 # WiFi Key
 WiFi SSID: `ESP8266_8CH_Smart_Switch`
+
 Password: `ESP8266-admin`
 
 # Activation
