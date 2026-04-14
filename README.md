@@ -37,7 +37,7 @@
 - So much more...
 
 # Installation
-- Flash the firmware.bin using `0x0` offset
+- Download the [flasher](https://github.com/xiv3r/esp8266-automatic-timer-switch/releases/tag/flasher) and [firmware.bin](https://github.com/xiv3r/esp8266-automatic-timer-switch/raw/refs/heads/main/esp8266-8ch-automatic-switch.bin) and flash using `0x0` offset
 
 # WiFi Key
 - WiFi SSID: `ESP8266_8CH_Smart_Switch`
