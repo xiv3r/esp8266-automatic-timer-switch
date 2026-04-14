@@ -72,7 +72,7 @@ char ap_password[32] = "ESP8266-admin";
 
 bool wifiConnected = false;
 unsigned long lastNTPSync = 0;
-const unsigned long NTP_SYNC_INTERVAL = 10000; // 10 seconds
+const unsigned long NTP_SYNC_INTERVAL = 1000; // 1 seconds
 
 // HTML Pages
 const char index_html[] PROGMEM = R"rawliteral(
