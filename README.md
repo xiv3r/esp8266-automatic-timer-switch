@@ -10,27 +10,28 @@
 - NTPClient
 
 # Features 
-✅ Captive Portal
-✅ Manual and Automatic Switch
-✅ Control Doesn't works if time is not synchronized
-✅ Lightweight and More Responsive Web User Interface 
-✅ ESP8266 NTP/RTC Auto synchronization
-✅ Wifi Client mode for NTP/RTC time synchronization
-✅ Support 1--8 Channel Relay
-✅ Each Relay have 4 start and stop schedule a total of 8 schedules
-✅ Persistent data (Survive Power loss)
-✅ Anti-Reset Protection
-✅ Works Offline after NTP is Synchronized 
+- Captive Portal
+- Custom wifi settings 
+- Manual and Automatic Switch
+- Control Doesn't works if time is not synchronized
+- Lightweight and More Responsive Web User Interface 
+- ESP8266 NTP/RTC Auto synchronization
+- Wifi Client mode for NTP/RTC time synchronization
+- Support 1--8 Channel Relay
+- Each Relay have 4 start and stop schedule a total of 8 schedules
+- Persistent data (Survive Power loss)
+- Anti-Reset Protection
+- Works Offline after NTP is Synchronized 
 
 # Suitable
-✅ Home Automation
-✅ Farms
-✅ Livestocks 
-✅ Buildings
-✅ Water pumping station
-✅ Greenhouses
-✅ Automatic Garden Sprinkler System 
-✅ So much more...
+- Home Automation
+- Farms
+- Livestocks 
+- Buildings
+- Water pumping station
+- Greenhouses
+- Automatic Garden Sprinkler System 
+- So much more...
 
 # Installation
 - Flash the firmware.bin using `0x0` offset
