@@ -2,7 +2,7 @@
 - ESP8266 12E 160MHZ
 - 8-Channel Relay
 - 10 Dupont Wire
-- Wifi for NTP/RTC sync
+- Home Wifi for NTP/RTC sync
 - 5vDC Battery (Maintain Power and Timer)(optional)
 
 # Arduino Libraries
@@ -23,7 +23,7 @@
 - Anti-Reset Protection
 - Works Offline after NTP is Synchronized 
 
-### Note
+# Note
 - In case the ntp server is inactive to maintain the relay switch time precision control add a 5vdc battery for esp8266 and separate the 5vdc relay power supply adaptor.
 
 # Suitable
