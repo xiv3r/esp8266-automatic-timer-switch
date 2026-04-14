@@ -22,7 +22,8 @@
 - Each Relay have 4 start and stop schedule a total of 8 schedules
 - Persistent data (Survive Power loss)
 - Anti-Reset Protection
-- Works Offline after NTP is Synchronized 
+- Works Offline after NTP is Synchronized
+- 99% RTC+NTP accuracy rate
 
 # Note
 - In case the ntp server is inactive to maintain the relay switch time precision control add a 5vdc battery for esp8266 and separate the 5vdc relay power supply adaptor.
