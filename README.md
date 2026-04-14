@@ -11,7 +11,8 @@
 
 # Features 
 - Captive Portal
-- Custom wifi settings 
+- Custom wifi settings
+- WAN gateway access
 - Manual and Automatic Switch
 - Control Doesn't works if time is not synchronized
 - Lightweight and More Responsive Web User Interface 
