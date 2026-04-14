@@ -24,3 +24,4 @@ IN7 _____ D6 GPIO
 IN8 _____ D7 GPIO
 GND _____ GND
 ```
+<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/img/esp8266_dashboard.jpg">
