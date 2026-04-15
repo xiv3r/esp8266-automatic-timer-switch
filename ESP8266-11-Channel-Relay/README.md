@@ -1,4 +1,4 @@
-# GPIO connections
+# 11-Channel Relay GPIO Connections
 ```
 RELAY    ESP8266
 VCC _____ 5VIN 
@@ -12,7 +12,7 @@ IN7 _____ D6 GPIO
 IN8 _____ D7 GPIO
 - Extra Relay
 IN1 _____ D8
-IN2 _____ RX 
-IN3 _____ TX
+IN2 _____ RX ->GPIO3
+IN3 _____ TX ->GPIO1
 GND _____ GND
 ```
