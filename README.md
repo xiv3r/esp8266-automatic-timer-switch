@@ -39,7 +39,11 @@ GND _____ GND
 ```
 <img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/img/esp8266_dashboard.jpg">
 
+<details><summary>
+
 # Full Features
+</summary>
+
 ## 🔌 Relay Control System
 · 8 Independent Relay Channels - GPIO pin configurable
 
@@ -197,3 +201,4 @@ Endpoint Method Purpose
 · Security lighting schedules
 
 · Energy management systems
+</details>
