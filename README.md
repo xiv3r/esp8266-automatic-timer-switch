@@ -9,9 +9,6 @@
 - ArduinoJson
 - NTPClient
 
-# Note
-- In case the ntp server is inactive to maintain the relay switch time precision control add a 5vdc battery for esp8266 and separate the 5vdc relay power supply adaptor.
-
 # Installation
 - Download the [flasher](https://github.com/xiv3r/esp8266-automatic-timer-switch/releases/tag/flasher) and [firmware.bin](https://github.com/xiv3r/esp8266-automatic-timer-switch/raw/refs/heads/main/esp8266-8ch-timer-switch-firmware-0x0.bin) and flash using `0x0` offset
 
@@ -22,7 +19,7 @@
 # Activation
 - Go to `wifi settings` and connect to your home wifi after the NTP is synchronized everything will works.
 
-# Schematics
+# GPIO Connection 
 ```
 RELAY     ESP8266
 VCC _____ 5VIN 
