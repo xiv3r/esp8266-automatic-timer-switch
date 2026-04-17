@@ -1,7 +1,7 @@
 # Requirements 
 - ESP8266 12E 160MHZ
-- 8-Channel Relay
-- 10 Dupont Wire
+- 11-Channel Relay
+- 11 Dupont Wire
 - Home Wifi for NTP/RTC sync
 - 5vDC Battery (Maintain Power and Timer)(optional)
 
@@ -16,7 +16,7 @@
 - Download the [flasher](https://github.com/xiv3r/esp8266-automatic-timer-switch/releases/tag/flasher) and [firmware.bin](https://github.com/xiv3r/esp8266-automatic-timer-switch/raw/refs/heads/main/esp8266-8ch-timer-switch-firmware-0x0.bin) and flash using `0x0` offset
 
 # WiFi Key
-- WiFi SSID: `ESP8266_8CH_Smart_Switch`
+- WiFi SSID: `ESP8266_11CH_Smart_Switch`
 - Password: `ESP8266-admin`
 
 # Activation
@@ -34,6 +34,10 @@ IN5 _____ D4 GPIO
 IN6 _____ D5 GPIO
 IN7 _____ D6 GPIO
 IN8 _____ D7 GPIO
+-- Extra Relay
+IN1 _____ D8 GPIO
+IN2 _____ RX GPIO3
+IN3 _____ TX GPIO1
 GND _____ GND
 ```
 <img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/img/esp8266_dashboard.jpg">
@@ -96,7 +100,7 @@ GND _____ GND
   · NTP server configuration
   · Timezone offsets
   · Last successful NTP sync timestamp
-  · All 8 relay configurations and schedules
+  · All 11 relay configurations and schedules
 
 ## 🌍 Web Interface
 · Responsive Design - Works on desktop, tablet, and mobile
@@ -168,7 +172,7 @@ Endpoint Method Purpose
 · Watchdog Friendly - Short delay() calls prevent resets
 
 ## 📊 Technical Specifications
-· 8 Relays with 4 schedules each = 32 total schedules
+· 11 Relays with 8 schedules each = 88 total schedules
 
 · EEPROM Storage: 2048 bytes
 
@@ -178,7 +182,7 @@ Endpoint Method Purpose
 
 · Default Timezone: Philippines GMT+8 (28800 seconds)
 
-· Default AP: ESP8266_8CH_Smart_Switch / ESP8266-admin
+· Default AP: ESP8266_11CH_Smart_Switch / ESP8266-admin
 
 ## 🎯 Use Cases
 · Home automation lighting control
