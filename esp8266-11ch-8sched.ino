@@ -86,8 +86,8 @@ char ap_password[32] = "ESP8266-admin";
 
 bool wifiConnected = false;
 unsigned long lastNTPSync = 0;
-// CHANGED: Set NTP sync interval to 10 seconds (10000 ms) instead of 1 second
-const unsigned long NTP_SYNC_INTERVAL = 10000; // 10 seconds 
+// CHANGED: Set NTP sync interval to 1 hour 
+const unsigned long NTP_SYNC_INTERVAL = 3600000; // 1 hour 
 
 // Function prototypes
 time_t getCurrentEpoch();
