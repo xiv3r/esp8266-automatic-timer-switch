@@ -2,6 +2,7 @@
 - ESP8266 12E 160MHZ
 - 11-Channel Relay
 - 11 Dupont Wire
+- 1 10K ohms resistor
 - Home Wifi for NTP/RTC sync
 - 5vDC Battery (Maintain Power and Timer)(optional)
 
@@ -20,6 +21,7 @@
 - Go to `wifi settings` and connect to your home wifi after the NTP is synchronized everything will works.
 
 # GPIO Connection 
+Note: `For 11 channel relay just connect the 10K ohms resistor from D8 to GND`
 ```
 RELAY     ESP8266
 VCC _____ 5VIN 
