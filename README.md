@@ -39,7 +39,7 @@ IN2 _____ RX GPIO3
 IN3 _____ TX GPIO1
 GND _____ GND
 ```
-<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/img/esp8266_dashboard.jpg">
+<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/images/esp8266-img.png">
 
 <details><summary>
 
