@@ -4,7 +4,10 @@
 - 11 Dupont Wire
 - 1 10K ohms resistor
 - Home Wifi for NTP/RTC sync
-- 5vDC Battery (Maintain Power and Timer)(optional)
+- 5v 3a Power Supply
+
+`Optional`
+- 5vDC Battery (Maintain Power and Timer)
 
 # Arduino Libraries
 - ArduinoJson
