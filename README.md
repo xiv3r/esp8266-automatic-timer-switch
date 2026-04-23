@@ -47,163 +47,158 @@ GND _____ GND
 <details><summary>
 
 # Full Features
+
 </summary>
 
-## 🔌 Relay Control System
-· 8 Independent Relay Channels - GPIO pin configurable
-
-· Active LOW/HIGH Support - Configurable relay trigger logic
-
-· Manual Override Mode - Direct ON/OFF control bypassing schedules
-
-· Auto Mode - Returns to scheduled operation
-
-· Real-time Status Display - Live relay state monitoring
-
-## ⏰ Timer & Scheduling
-· 4 Independent Schedules per Relay - Up to 64 total schedules system-wide
-
-· Precise Time Control - Hour, minute, and second granularity
-
-· Overnight Scheduling - Supports schedules crossing midnight
-
-. Per-Schedule Enable/Disable - Individual schedule activation
-
-· Automatic Schedule Processing - Runs continuously in background
-
-## 🌐 Network & Connectivity
-· WiFi Station Mode - Connects to existing WiFi networks
-
-· Access Point Mode - Creates its own WiFi network for configuration
-
-· Dual-Mode Operation - Runs both Station and AP simultaneously
-
-· Captive Portal - Automatic redirect to configuration page
-
-· DNS Server - Handles all DNS requests for easy access
-
-## 🕐 Time Synchronization (NTP/RTC)
-· NTP Client - Syncs time from internet time servers· Customizable NTP Server - Configure any NTP server
-
-· Timezone Support - GMT offset and daylight saving configuration
-
-· RTC Emulation - Stores last known time in EEPROM
-
-· Cold Boot Time Recovery - Restores time without internet connection
-
-· Automatic Time Sync - Regular NTP updates when connected
-
-## 💾 Persistent Storage (EEPROM)
-. Configuration Backup - All settings survive power cycles
-
-· Version Migration - Automatic upgrades from older config versions
-
-· Magic Number Validation - Detects corrupted/invalid configurations
-
-. Stored Settings Include:
-  · WiFi credentials (SSID & password)
-  · AP credentials (SSID & password)
-  · NTP server configuration
-  · Timezone offsets
-  · Last successful NTP sync timestamp
-  · All 11 relay configurations and schedules
-
-## 🌍 Web Interface
-· Responsive Design - Works on desktop, tablet, and mobile
-
-· 4 Main Pages:
-  1. Relay Control Dashboard - Main interface for all 16 relays
-  2. WiFi Settings - Configure station network connection
-  3. AP Settings - Configure access point credentials
-  4. NTP/RTC Settings - Configure time synchronization
-
-## 📱 Web Interface Features
-. Real-time Clock Display - Live updating time in header
-
-· Visual Status Indicators - Color-coded ON/OFF states
-
-· Manual Control Buttons - Direct relay control
-
-· Schedule Configuration - Intuitive time input for each schedule
-
-· Checkbox Enable/Disable - Quick schedule activation
-
-· Save per Relay - Individual relay configuration saving
-
-· Auto-Refresh - Periodic status updates (every 60 seconds)
-
-· Notification System - Success/error feedback messages
-
-· Input Validation - Client-side time range validation
-
-## 🔧 API Endpoints
-Endpoint Method Purpose
+## 🌐 Connectivity
 ```
-/api/relays GET Retrieve all relay states and schedules
-/api/relay/manual POST Set manual override state
-/api/relay/reset POST Cancel manual override
-/api/relay/save POST Save schedule configuration
-/api/time GET Get current system time
-/api/wifi GET/POST Get/Set WiFi station settings
-/api/ap GET/POST Get/Set Access Point settings
-/api/ntp GET/POST Get/Set NTP configuration
-/api/ntp/sync POST Force immediate NTP sync
+WiFi Station (STA) Connects to home WiFi network
+WiFi Access Point (AP) Built-in AP for initial setup (ESP8266_11CH_Timer_Switch)
+mDNS Access via hostname.local (configurable)
+Captive Portal Auto-redirects to setup page when connecting to AP
+DNS Server Built-in DNS for captive portal functionality
+Async WiFi Scan Non-blocking network scanning from web UI
+Auto-Reconnect Retries up to 10 times with 5-minute cooldown
 ```
 
-## 🛡️ Security Features
-· Password Protection - AP password with minimum 8 characters
+## ⏰ Time & Scheduling
+```
+NTP Time Sync Multiple fallback servers (ph.pool.ntp.org → pool.ntp.org → time.nist.gov → time.google.com)
+RTC Drift Compensation Software RTC with automatic drift adjustment
+EEPROM Time Persistence Saves epoch across reboots
+Timezone Support Configurable GMT offset + DST offset
+Auto-Sync Interval Configurable 1–24 hours
+Manual Sync Force NTP sync from web UI
+```
 
-· Open Network Option - Blank password for open AP
+## 🔌 Relay Control (11 Channels)
+```
+Manual Override ON/OFF/Auto modes per relay
+Custom Relay Names 15-character max, double-click to edit
+Active-Low Support Configurable relay logic
+Pin Mapping D0–D8 + GPIO3 (RX) + GPIO1 (TX)
+```
 
-· Password Not Exposed - API doesn't return stored passwords
+## 📅 Schedule Engine (8 schedules per relay)
+```
+Per-Schedule Enable/Disable Individual schedule toggles
+Start/Stop Times Hour, minute, second granularity
+Same-Day Windows Normal start < stop scheduling
+Overnight Windows Start > stop wraps across midnight
+Always-ON Detection Start == stop interpreted as 24/7 ON
+Overnight Badge UI indicator for wrap-around schedules
+Visual Indicators "🌙 Overnight" / "● Always ON" badges
+```
 
-· Input Validation - Server-side validation for all settings
+## 🖥️ Web Interface
+```
+Relays (/) Relay grid, manual control, schedule editing, name editing
+WiFi (/wifi) STA settings, network scan with RSSI bars, connection status
+Time (/ntp) NTP server, GMT/DST offsets, sync interval, manual sync
+AP (/ap) AP SSID/password, channel (1–13), hidden SSID toggle
+System (/system) Info dashboard, hostname config, restart, factory reset
 
-## ⚙️ Configuration Management
-· Factory Defaults - Automatic initialization on first boot
+- UI Features
 
-· Configuration Migration - Handles version upgrades gracefully
+· Live clock display with WiFi/NTP status dots
+· RSSI signal strength bars (1–4 bars)
+· Toast notifications for actions
+· Mobile-responsive CSS grid layout
+· Auto-refresh every 60 seconds
+```
 
-· Automatic Restart - After WiFi/AP configuration changes
+## 🔧 Configuration Management
+```
+EEPROM Storage 2048 bytes with magic number validation
+Version Migration Auto-upgrades from v1 → v2 → v3 → v4
+ExtConfig Partition Extended settings at offset 1024
+Factory Reset Erases all EEPROM, reverts to defaults
+Safe Relay Default All relays OFF on boot
+```
 
-· Serial Debug Output - Comprehensive logging for troubleshooting
+## 🛡️ Security & Stability
+```
+Non-Blocking Loop No delay() calls; state machines for WiFi/NTP
+WiFi Backoff 5-minute cooldown after 10 failed attempts
+Watchdog Safe Proper yield behavior
+JSON Parsing Memory-efficient manual parsing + StaticJsonDocument
+```
 
-## 🔄 System Features
-· Non-blocking Operation - Schedules process without interrupting web server
+## 📡 API Endpoints
+```
+/api/relays GET Get all relay states and schedules
+/api/relay/manual POST Set manual override (ON/OFF)
+/api/relay/reset POST Return to auto/schedule mode
+/api/relay/save POST Save schedules for a relay
+/api/relay/name POST Update relay custom name
+/api/time GET Current time, WiFi/NTP status
+/api/wifi GET/POST Get/save STA settings
+/api/wifi/scan POST/GET Start async scan / get results
+/api/ntp GET/POST Get/save NTP settings
+/api/ntp/sync POST Force NTP sync
+/api/ap GET/POST Get/save AP settings
+/api/system GET/POST System info / save hostname
+/api/reset POST Soft restart
+/api/factory-reset POST Full factory reset
+```
 
-· Dual-core ESP8266 Support - Efficient multitasking
+## 🔄 Captive Portal Detection
+```
+OS/Platform Probe Path
+iOS / macOS /hotspot-detect.html, /library/test/success.html
+Android / Chrome /generate_204
+Firefox /success.txt, /canonical.html
+Windows (NCSI) /connecttest.txt, /ncsi.txt, /redirect
+```
 
-· Graceful Degradation - Continues operation without WiFi
+## 📊 System Information Dashboard
+```
+· STA IP address
+· AP IP address
+· Free heap memory (KB)
+· Uptime (hours/minutes/seconds)
+· mDNS hostname
+· WiFi RSSI with quality descriptor (Excellent/Good/Fair/Weak)
+· NTP last sync time
+· Current NTP server
+```
 
-· Watchdog Friendly - Short delay() calls prevent resets
+## 🧠 Advanced Features
+```
+RTC Drift Learning Adjusts internal clock based on NTP vs. millis() drift (clamped 0.90–1.10)
+EEPROM Wear Reduction Only writes on config changes
+Schedule Engine Optimization Early exit when ON condition found
+WiFi State Machine Non-blocking connection attempts
+Hidden AP Support Toggle SSID broadcast on/off
+```
 
-## 📊 Technical Specifications
-· 11 Relays with 8 schedules each = 88 total schedules
+## 📦 Default Settings
+```
+Setting Default Value
+AP SSID ESP8266_11CH_Timer_Switch
+AP Password ESP8266-admin
+AP Channel 6
+NTP Server ph.pool.ntp.org
+GMT Offset 28800 (UTC+8)
+DST Offset 0
+Sync Interval 1 hour
+Hostname esp8266relay
+Relay Names "Relay 1" through "Relay 11"
+```
 
-· EEPROM Storage: 2048 bytes
-
-· Configuration Version: 2 (with migration from v1)
-
-· Supported NTP Servers: Any standard NTP pool/server
-
-· Default Timezone: Philippines GMT+8 (28800 seconds)
-
-· Default AP: ESP8266_11CH_Smart_Switch / ESP8266-admin
-
-## 🎯 Use Cases
-· Home automation lighting control
-
-· Irrigation/sprinkler systems
-
-· Aquarium/terrarium lighting schedules
-
-· Industrial equipment timing
-
-· Holiday decoration timing
-
-· Greenhouse environmental control
-
-· Security lighting schedules
-
-· Energy management systems
+## 🔌 Pinout Reference
+```
+Relay GPIO NodeMCU Label
+1 16 D0
+2 5 D1
+3 4 D2
+4 0 D3
+5 2 D4
+6 14 D5
+7 12 D6
+8 13 D7
+9 15 D8
+10 3 RX
+11 1 TX
+```
 </details>
