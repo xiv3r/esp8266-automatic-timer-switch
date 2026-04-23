@@ -1,6 +1,6 @@
 # Requirements 
 - ESP8266 12E 160MHZ
-- 11-Channel Relay
+- 1-11 Channel Relay
 - 11 Dupont Wire
 - 1 10K ohms resistor
 - Home Wifi for NTP/RTC sync
