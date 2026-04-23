@@ -21,7 +21,7 @@
 - Go to `wifi settings` and connect to your home wifi after the NTP is synchronized everything will work
 
 # Relay Name
-- Double click to edit the relay name
+- Double click relay name to edit
 
 # GPIO Connection 
 Note: `For 11 channel relay just connect the 10K ohms resistor from D8 to GND`
