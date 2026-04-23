@@ -11,14 +11,17 @@
 - NTPClient
 
 # Installation
-- Download the [flasher](https://github.com/xiv3r/esp8266-automatic-timer-switch/releases/tag/flasher) and [firmware.bin](https://github.com/xiv3r/esp8266-automatic-timer-switch/raw/refs/heads/main/esp8266-8ch-timer-switch-firmware-0x0.bin) and flash using `0x0` offset
+- Download the [flasher](https://github.com/xiv3r/esp8266-automatic-timer-switch/releases/tag/flasher) and [firmware.bin](https://github.com/xiv3r/esp8266-automatic-timer-switch/raw/refs/heads/main/esp8266-11ch-firmware-0x0.bin) and flash using `0x0` offset
 
 # WiFi Key
 - WiFi SSID: `ESP8266_11CH_Smart_Switch`
 - Password: `ESP8266-admin`
 
 # Activation
-- Go to `wifi settings` and connect to your home wifi after the NTP is synchronized everything will works.
+- Go to `wifi settings` and connect to your home wifi after the NTP is synchronized everything will work
+
+# Relay Name
+- Double click to edit the relay name
 
 # GPIO Connection 
 Note: `For 11 channel relay just connect the 10K ohms resistor from D8 to GND`
