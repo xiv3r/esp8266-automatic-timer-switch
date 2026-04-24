@@ -1,6 +1,6 @@
 /*
 ============================================================
- *  ESP8266 11-Channel Relay Smart Switch — Firmware v4
+ *  ESP8266 11-Channel Relay Smart Switch — Firmware v5
  *  Author: github.com/xiv3r
 ============================================================
  */
@@ -26,6 +26,7 @@ static const unsigned long NTP_RETRY_INTERVAL   =   30000UL; // 30 s on NTP fail
 static const unsigned long WIFI_CHECK_INTERVAL  =    5000UL; // 5 s WiFi state poll
 static const unsigned long WIFI_CONNECT_TIMEOUT =   15000UL; // 15 s STA connect window
 static const unsigned long RTC_UPDATE_INTERVAL  =     100UL; // 100 ms RTC tick
+static const unsigned long WS_BROADCAST_INTERVAL =    1000UL; // 1 s WebSocket broadcast
 
 // ─── NTP fallback pool ───────────────────────────────────────────────────────
 static const char* NTP_SERVERS[] = {
@@ -144,6 +145,11 @@ volatile int  scanResultCount = -1;   // -1 = not scanned
 char ap_ssid[32]     = "ESP8266_11CH_Timer_Switch";
 char ap_password[32] = "ESP8266-admin";
 
+// WebSocket
+#include <WebSocketsServer.h>
+WebSocketsServer webSocket = WebSocketsServer(81);
+unsigned long lastWSBroadcast = 0;
+
 // ─── Inline helper ───────────────────────────────────────────────────────────
 inline unsigned long getNTPInterval() {
     uint8_t h = extConfig.ntp_sync_hours;
@@ -167,6 +173,8 @@ void restartAP();
 void tryNTPSync();
 void beginWiFiConnect();
 void startMDNS();
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length);
+void broadcastWSState();
 
 // JSON parsing helpers
 int extractJsonInt(const String& json, const char* key);
@@ -272,6 +280,34 @@ const char index_html[] PROGMEM = R"raw(<!DOCTYPE html>
 </main>
 <div id="toast"></div>
 <script>
+// WebSocket connection for real-time updates
+let ws = null;
+function connectWS() {
+  if (ws && ws.readyState === WebSocket.OPEN) return;
+  ws = new WebSocket('ws://' + window.location.hostname + ':81/');
+  ws.onmessage = function(e) {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.type === 'time') {
+        document.getElementById('clk').textContent = d.time || '--:--:--';
+        const w = document.querySelector('.wd'), n = document.querySelector('.nd');
+        if (w) w.className = 'dot ' + (d.wifi ? 'g' : 'r');
+        if (n) n.className = 'dot ' + (d.ntp ? 'g' : 'y');
+      } else if (d.type === 'relays') {
+        relays = d.data;
+        render();
+      }
+    } catch(ex) {}
+  };
+  ws.onclose = function() {
+    setTimeout(connectWS, 5000);
+  };
+  ws.onerror = function() {
+    ws.close();
+  };
+}
+connectWS();
+
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
 function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot '+(d.wifi?'g':'r');if(n)n.className='dot '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
@@ -492,6 +528,27 @@ const char wifi_html[] PROGMEM = R"raw(<!DOCTYPE html>
 </main>
 <div id="toast"></div>
 <script>
+// WebSocket connection for real-time clock updates
+let ws = null;
+function connectWS() {
+  if (ws && ws.readyState === WebSocket.OPEN) return;
+  ws = new WebSocket('ws://' + window.location.hostname + ':81/');
+  ws.onmessage = function(e) {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.type === 'time') {
+        document.getElementById('clk').textContent = d.time || '--:--:--';
+        const w = document.querySelector('.wd'), n = document.querySelector('.nd');
+        if (w) w.className = 'dot ' + (d.wifi ? 'g' : 'r');
+        if (n) n.className = 'dot ' + (d.ntp ? 'g' : 'y');
+      }
+    } catch(ex) {}
+  };
+  ws.onclose = function() { setTimeout(connectWS, 5000); };
+  ws.onerror = function() { ws.close(); };
+}
+connectWS();
+
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
 function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot '+(d.wifi?'g':'r');if(n)n.className='dot '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
@@ -603,6 +660,27 @@ const char ntp_html[] PROGMEM = R"raw(<!DOCTYPE html>
 </main>
 <div id="toast"></div>
 <script>
+// WebSocket connection for real-time clock updates
+let ws = null;
+function connectWS() {
+  if (ws && ws.readyState === WebSocket.OPEN) return;
+  ws = new WebSocket('ws://' + window.location.hostname + ':81/');
+  ws.onmessage = function(e) {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.type === 'time') {
+        document.getElementById('clk').textContent = d.time || '--:--:--';
+        const w = document.querySelector('.wd'), n = document.querySelector('.nd');
+        if (w) w.className = 'dot ' + (d.wifi ? 'g' : 'r');
+        if (n) n.className = 'dot ' + (d.ntp ? 'g' : 'y');
+      }
+    } catch(ex) {}
+  };
+  ws.onclose = function() { setTimeout(connectWS, 5000); };
+  ws.onerror = function() { ws.close(); };
+}
+connectWS();
+
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
 function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot '+(d.wifi?'g':'r');if(n)n.className='dot '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
@@ -679,6 +757,27 @@ const char ap_html[] PROGMEM = R"raw(<!DOCTYPE html>
 </main>
 <div id="toast"></div>
 <script>
+// WebSocket connection for real-time clock updates
+let ws = null;
+function connectWS() {
+  if (ws && ws.readyState === WebSocket.OPEN) return;
+  ws = new WebSocket('ws://' + window.location.hostname + ':81/');
+  ws.onmessage = function(e) {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.type === 'time') {
+        document.getElementById('clk').textContent = d.time || '--:--:--';
+        const w = document.querySelector('.wd'), n = document.querySelector('.nd');
+        if (w) w.className = 'dot ' + (d.wifi ? 'g' : 'r');
+        if (n) n.className = 'dot ' + (d.ntp ? 'g' : 'y');
+      }
+    } catch(ex) {}
+  };
+  ws.onclose = function() { setTimeout(connectWS, 5000); };
+  ws.onerror = function() { ws.close(); };
+}
+connectWS();
+
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
 function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot '+(d.wifi?'g':'r');if(n)n.className='dot '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
@@ -753,6 +852,27 @@ const char system_html[] PROGMEM = R"raw(<!DOCTYPE html>
 </main>
 <div id="toast"></div>
 <script>
+// WebSocket connection for real-time clock updates
+let ws = null;
+function connectWS() {
+  if (ws && ws.readyState === WebSocket.OPEN) return;
+  ws = new WebSocket('ws://' + window.location.hostname + ':81/');
+  ws.onmessage = function(e) {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.type === 'time') {
+        document.getElementById('clk').textContent = d.time || '--:--:--';
+        const w = document.querySelector('.wd'), n = document.querySelector('.nd');
+        if (w) w.className = 'dot ' + (d.wifi ? 'g' : 'r');
+        if (n) n.className = 'dot ' + (d.ntp ? 'g' : 'y');
+      }
+    } catch(ex) {}
+  };
+  ws.onclose = function() { setTimeout(connectWS, 5000); };
+  ws.onerror = function() { ws.close(); };
+}
+connectWS();
+
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
 function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot '+(d.wifi?'g':'r');if(n)n.className='dot '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
@@ -1004,6 +1124,12 @@ void setup() {
 
     dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
     setupWebServer();
+    
+    // ── WebSocket Server ──────────────────────────────────────────────────────
+    webSocket.begin();
+    webSocket.onEvent(webSocketEvent);
+    Serial.println("[WS] WebSocket server started on port 81");
+    
     Serial.println("[Boot] Ready");
 }
 
@@ -1015,6 +1141,7 @@ void loop() {
     dnsServer.processNextRequest();
     server.handleClient();
     if (mdnsStarted) MDNS.update();
+    webSocket.loop();
 
     unsigned long now = millis();
 
@@ -1091,6 +1218,98 @@ void loop() {
 
     // ── Relay schedule engine ────────────────────────────────────────────────
     processRelaySchedules();
+    
+    // ── WebSocket broadcast ──────────────────────────────────────────────────
+    if (now - lastWSBroadcast >= WS_BROADCAST_INTERVAL) {
+        lastWSBroadcast = now;
+        broadcastWSState();
+    }
+}
+
+// =============================================================================
+//  WEBSOCKET FUNCTIONS
+// =============================================================================
+
+void broadcastWSState() {
+    if (webSocket.connectedClients() == 0) return;
+    
+    // Broadcast time update
+    String ts = "--:--:--";
+    time_t ep = getCurrentEpoch();
+    if (ep > 1000000000UL) {
+        struct tm* t = localtime(&ep);
+        char buf[10];
+        sprintf(buf, "%02d:%02d:%02d", t->tm_hour, t->tm_min, t->tm_sec);
+        ts = buf;
+    }
+    
+    String timeMsg = "{\"type\":\"time\",\"time\":\"" + ts + "\",\"wifi\":" + 
+                     String(wifiConnected ? "true" : "false") + ",\"ntp\":" + 
+                     String((lastNTPSync > 0) ? "true" : "false") + "}";
+    webSocket.broadcastTXT(timeMsg);
+    
+    // Broadcast relay states (only if something changed - simple optimization)
+    static bool relayStateChanged = true;
+    if (relayStateChanged) {
+        String relayMsg = "{\"type\":\"relays\",\"data\":[";
+        for (int i = 0; i < NUM_RELAYS; i++) {
+            if (i > 0) relayMsg += ",";
+            relayMsg += "{";
+            relayMsg += "\"name\":\"" + String(relayConfigs[i].name) + "\",";
+            relayMsg += "\"state\":" + String(digitalRead(relayPins[i]) == (relayActiveLow ? LOW : HIGH) ? "true" : "false") + ",";
+            relayMsg += "\"manual\":" + String(relayConfigs[i].manualOverride ? "true" : "false") + ",";
+            relayMsg += "\"schedules\":[";
+            for (int s = 0; s < 8; s++) {
+                if (s > 0) relayMsg += ",";
+                relayMsg += "{";
+                relayMsg += "\"startHour\":" + String(relayConfigs[i].schedule.startHour[s]) + ",";
+                relayMsg += "\"startMinute\":" + String(relayConfigs[i].schedule.startMinute[s]) + ",";
+                relayMsg += "\"startSecond\":" + String(relayConfigs[i].schedule.startSecond[s]) + ",";
+                relayMsg += "\"stopHour\":" + String(relayConfigs[i].schedule.stopHour[s]) + ",";
+                relayMsg += "\"stopMinute\":" + String(relayConfigs[i].schedule.stopMinute[s]) + ",";
+                relayMsg += "\"stopSecond\":" + String(relayConfigs[i].schedule.stopSecond[s]) + ",";
+                relayMsg += "\"enabled\":" + String(relayConfigs[i].schedule.enabled[s] ? "true" : "false");
+                relayMsg += "}";
+            }
+            relayMsg += "]}";
+        }
+        relayMsg += "]}";
+        webSocket.broadcastTXT(relayMsg);
+        relayStateChanged = false;
+    }
+}
+
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
+    switch(type) {
+        case WStype_DISCONNECTED:
+            Serial.printf("[WS] Client %u disconnected\n", num);
+            break;
+        case WStype_CONNECTED:
+            Serial.printf("[WS] Client %u connected\n", num);
+            // Send initial state immediately
+            {
+                String ts = "--:--:--";
+                time_t ep = getCurrentEpoch();
+                if (ep > 1000000000UL) {
+                    struct tm* t = localtime(&ep);
+                    char buf[10];
+                    sprintf(buf, "%02d:%02d:%02d", t->tm_hour, t->tm_min, t->tm_sec);
+                    ts = buf;
+                }
+                String timeMsg = "{\"type\":\"time\",\"time\":\"" + ts + "\",\"wifi\":" + 
+                                 String(wifiConnected ? "true" : "false") + ",\"ntp\":" + 
+                                 String((lastNTPSync > 0) ? "true" : "false") + "}";
+                webSocket.sendTXT(num, timeMsg);
+            }
+            break;
+        case WStype_TEXT:
+            // Handle incoming messages if needed
+            Serial.printf("[WS] Client %u: %s\n", num, payload);
+            break;
+        case WStype_ERROR:
+            Serial.printf("[WS] Error on client %u\n", num);
+            break;
+    }
 }
 
 // =============================================================================
