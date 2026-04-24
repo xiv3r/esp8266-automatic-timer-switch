@@ -28,7 +28,7 @@
 
 # Access
 ° Direct Access
-- mDNS:`esp32-16ch-timer.local`
+- mDNS:`esp8266-relay.local`
 - Captive Portal: Auto redirect
 - Gateway:`192.168.4.1`
 - WAN:`192.168.1.123`
