@@ -33,7 +33,7 @@
 - Gateway:`192.168.4.1`
 - WAN:`192.168.1.123`
   
-° Global:`Enable esp8266 Port Forwarding for on your router to access anywhere`
+° Global:`Enable esp8266 Port Forwarding on your router to access anywhere`
 
 # GPIO Connection 
 Note: `For 11 channel relay just connect the 10K ohms resistor from D8 to GND`
