@@ -40,18 +40,19 @@ Note: `For 11 channel relay just connect the 10K ohms resistor from D8 to GND`
 ```
 RELAY     ESP8266
 VCC _____ 5VIN 
-IN1 _____ D0 GPIO
-IN2 _____ D1 GPIO
-IN3 _____ D2 GPIO
-IN4 _____ D3 GPIO
-IN5 _____ D4 GPIO
-IN6 _____ D5 GPIO
-IN7 _____ D6 GPIO
-IN8 _____ D7 GPIO
--- Extra Relay
-IN1 _____ D8 GPIO
-IN2 _____ RX GPIO3
-IN3 _____ TX GPIO1
+IN1 _____ D0
+IN2 _____ D1
+IN3 _____ D2
+IN4 _____ D3
+IN5 _____ D4
+IN6 _____ D5
+IN7 _____ D6
+IN8 _____ D7
+Extra Relay
+VCC _____ 5VIN
+IN1 _____ D8
+IN2 _____ RX
+IN3 _____ TX
 GND _____ GND
 ```
 <img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/images/esp8266-img.png">
