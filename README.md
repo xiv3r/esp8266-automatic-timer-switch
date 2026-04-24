@@ -1,3 +1,6 @@
+# About
+The ESP8266 11-Channel Relay Smart Switch is an open-source, fully self-contained firmware that transforms a low-cost ESP8266 microcontroller into a professional WiFi-connected programmable timer. It can control up to 11 relays independently, with 8 customizable ON/OFF schedules per relay—giving you a total of 88 programmable time windows. Everything is managed through a modern, responsive web interface that runs entirely on the device, with no cloud dependency, no external server, and no mobile app required.
+
 # Requirements 
 - ESP8266 12E 160MHZ
 - 1-11 Channel Relay
