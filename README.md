@@ -51,7 +51,11 @@ IN5 _____ D4
 IN6 _____ D5
 IN7 _____ D6
 IN8 _____ D7
-Extra Relay
+GND _____ GND
+```
+- [ Extra Relay ]
+⚠️ Undetermined problem from D8 so attach the relay to D8 10 seconds after esp8266 boot
+```
 VCC _____ 5VIN
 IN1 _____ D8
 IN2 _____ RX
