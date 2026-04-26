@@ -52,7 +52,8 @@ IN8 _____ D7
 GND _____ GND
 ```
 - [ Extra Relay ]
-⚠️ Undetermined problem from D8 so attach the relay connection to D8 10 seconds after the esp8266 boot
+
+⚠️ Undetermined problem from D8 so attach the relay connection to D8 10 seconds after the esp8266 boot (avoid power loss) otherwise don't use the D8.
 ```
 VCC _____ 5VIN
 IN1 _____ D8
