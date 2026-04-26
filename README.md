@@ -26,7 +26,7 @@ The ESP8266 11-Channel Relay Smart Switch is an open-source, fully self-containe
 - Go to `wifi settings` and connect to your home wifi after the NTP is synchronized everything will work
 
 # Relay Name
-- Double click relay name to edi
+- Double click relay name to edit
 
 # Access
 ° Direct Access
@@ -52,7 +52,7 @@ IN8 _____ D7
 GND _____ GND
 ```
 - [ Extra Relay ]
-⚠️ Undetermined problem from D8 so attach the relay to D8 10 seconds after esp8266 boot
+⚠️ Undetermined problem from D8 so attach the relay connection to D8 10 seconds after the esp8266 boot
 ```
 VCC _____ 5VIN
 IN1 _____ D8
