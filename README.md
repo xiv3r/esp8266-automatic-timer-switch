@@ -5,7 +5,6 @@ The ESP8266 11-Channel Relay Smart Switch is an open-source, fully self-containe
 - ESP8266 12E 160MHZ
 - 1-11 Channel Relay
 - 11 Dupont Wire
-- 1 10K ohms resistor
 - Home Wifi for NTP/RTC sync
 - 5v 3a Power Supply
 
@@ -39,7 +38,6 @@ The ESP8266 11-Channel Relay Smart Switch is an open-source, fully self-containe
 ° Global:`Enable esp8266 Port Forwarding on your router to access anywhere`
 
 # GPIO Connection 
-Note: `For 11 channel relay just connect the 10K ohms resistor from D8 to GND`
 ```
 RELAY     ESP8266
 VCC _____ 5VIN 
