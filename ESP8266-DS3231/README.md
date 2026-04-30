@@ -1,14 +1,14 @@
 # Requirements 
-- ESP8266 12E 160MHZ
+- ESP8266 v1. 12E 160MHZ NodeMCU
 - 1-9 Channel Relay
-- 1pcs Dupont Wire
+- Dupont Wire
 - DS3231 RTC Module
-- 5v 3a Power Supply
+- 5v 2-3a Power Supply
 
 # Arduino Libraries
 - ArduinoJson
 - NTPClient
-- RTCLib
+- [RTCLib]( https://github.com/adafruit/RTClib.git) 1.14.1
 
 # Installation
 - Download the firmware and flasher
@@ -39,7 +39,7 @@ firmware: 0x0
 
 # GPIO Connection 
 ```
-9CH   |  ESP8266
+9CH  |  ESP8266
 VCC _____ 5VIN 
 IN1 _____ D0
 IN2 _____ D3
@@ -48,13 +48,13 @@ IN4 _____ D5
 IN5 _____ D6
 IN6 _____ D7
 IN7 _____ D8
-IN8 ____ RX
-IN9 ____ TX
+IN8 _____ RX
+IN9 _____ TX
 GND _____ GND
 ```
 # DS3231 RTC Module 
 ```
-RTC  |  ESP8266
+RTC | ESP8266
 SDA → D2
 SCL → D1
 VCC → 3.3V
