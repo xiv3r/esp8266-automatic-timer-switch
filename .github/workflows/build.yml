@@ -27,7 +27,7 @@ jobs:
         arduino-cli lib install "Preferences"
         arduino-cli lib install "ArduinoJson"
         arduino-cli lib install "NTPClient"
-        arduino-cli lib install --zip-url https://github.com/adafruit/RTClib/archive/refs/tags/1.14.1.zip
+        arduino-cli lib install --zip-url https://codeload.github.com/adafruit/RTClib/zip/refs/tags/1.14.1
         
         arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 --output-dir firmware .
          
