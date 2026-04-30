@@ -17,6 +17,9 @@ The ESP8266 11-Channel Relay Smart Switch is an open-source, fully self-containe
 
 # Installation
 - Download the [flasher](https://github.com/xiv3r/esp8266-automatic-timer-switch/releases/tag/flasher) and [firmware.bin](https://github.com/xiv3r/esp8266-automatic-timer-switch/raw/refs/heads/main/esp8266-firmware-0x0.bin) and flash using `0x0` offset
+```
+firmware: 0x0
+```
 
 # WiFi Key
 - WiFi SSID: `ESP8266_11CH_Smart_Switch`
