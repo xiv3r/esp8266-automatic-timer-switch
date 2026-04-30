@@ -1,0 +1,62 @@
+# Requirements 
+- ESP8266 12E 160MHZ
+- 1-9 Channel Relay
+- 1pcs Dupont Wire
+- DS3231 RTC Module
+- 5v 3a Power Supply
+
+# Arduino Libraries
+- ArduinoJson
+- NTPClient
+- RTCLib
+
+# Installation
+- Download the firmware and flasher
+
+- Flash offset address 
+```
+firmware: 0x0
+```
+
+# WiFi Key
+- WiFi SSID: `ESP8266_9CH_Timer_Switch`
+- Password: `ESP8266-admin`
+
+# Activation
+- Go to `192.168.4.1 -> wifi` and connect to your home wifi after the NTP is synchronized everything will work
+
+# Relay Name
+- Double click relay name to edit
+
+# Access
+° Direct Access
+- mDNS:`esp8266-relay.local`
+- Captive Portal: Auto redirect
+- Gateway:`192.168.4.1`
+- WAN:`192.168.1.123`
+  
+° Global:`Enable esp8266 Port Forwarding on your router to access anywhere`
+
+# GPIO Connection 
+```
+9CH   |  ESP8266
+VCC _____ 5VIN 
+IN1 _____ D0
+IN2 _____ D3
+IN3 _____ D4
+IN4 _____ D5
+IN5 _____ D6
+IN6 _____ D7
+IN7 _____ D8
+IN8 ____ RX
+IN9 ____ TX
+GND _____ GND
+```
+# DS3231 RTC Module 
+```
+RTC  |  ESP8266
+SDA → D2
+SCL → D1
+VCC → 3.3V
+GND → GND
+```
