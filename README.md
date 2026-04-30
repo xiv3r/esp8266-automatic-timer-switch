@@ -3,8 +3,8 @@ The ESP8266 11-Channel Relay Smart Switch is an open-source, fully self-containe
 
 # Requirements 
 - ESP8266 12E 160MHZ
-- 1-11 Channel Relay
-- 11 Dupont Wire
+- 5v 1-11 Channel Relay
+- Dupont Wire
 - Home Wifi for NTP/RTC sync
 - 5v 3a Power Supply
 
