@@ -8,7 +8,7 @@
 # Arduino Libraries
 - ArduinoJson
 - NTPClient
-- [RTCLib]( https://github.com/adafruit/RTClib.git) 1.14.1
+- [RTCLib](https://codeload.github.com/adafruit/RTClib/zip/refs/tags/1.14.1) 1.14.1
 
 # Installation
 - Download the firmware and flasher
