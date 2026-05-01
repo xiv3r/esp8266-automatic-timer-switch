@@ -7,6 +7,7 @@
 
 # Arduino Libraries
 - ArduinoJson
+- Preferences
 - NTPClient
 - [RTCLib](https://codeload.github.com/adafruit/RTClib/zip/refs/tags/1.14.1) 1.14.1
 
