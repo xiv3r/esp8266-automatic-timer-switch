@@ -73,155 +73,335 @@ GND _____ GND
 
 </summary>
 
-## 🌐 Connectivity
-```
-WiFi Station (STA) Connects to home WiFi network
-WiFi Access Point (AP) Built-in AP for initial setup (ESP8266_11CH_Timer_Switch)
-mDNS Access via hostname.local (configurable)
-Captive Portal Auto-redirects to setup page when connecting to AP
-DNS Server Built-in DNS for captive portal functionality
-Async WiFi Scan Non-blocking network scanning from web UI
-Auto-Reconnect Retries up to 10 times with 5-minute cooldown
-```
+## 🌐 Network & Connectivity
+
+### WiFi Station (STA) Mode
+- Connects to existing WiFi networks (2.4GHz)
+- Non-blocking automatic reconnection with state machine
+- Configurable reconnection attempts (max 10) with 5-minute cooldown after failures
+- WiFi status monitoring every 5 seconds
+- Connection timeout handling (15 seconds)
+- WiFi signal strength (RSSI) display with visual bars
+- Network scanning with async API (up to 20 networks shown)
+- Sorted by signal strength with encryption indicators
+
+### Access Point (AP) Mode
+- Simultaneous AP+STA mode support
+- Configurable AP SSID (up to 31 characters)
+- Optional AP password (WPA2, minimum 8 characters)
+- Selectable WiFi channel (1-13)
+- Hidden SSID option (disable broadcast)
+- Captive portal support for easy configuration
+- Fallback AP when STA connection fails
+
+### DNS & Captive Portal
+- Built-in DNS server (port 53)
+- Redirects all DNS requests to AP IP
+- Captive portal detection for Android, iOS, Windows
+- Handles multiple portal detection endpoints (hotspot-detect.html, success.txt, etc.)
+- Automatic redirect to configuration page
+
+### mDNS (Bonjour/Avahi)
+- Accessible via `[hostname].local` on local network
+- Configurable hostname (lowercase, digits, hyphens)
+- Auto-restart on hostname change
+- HTTP service advertised on port 80
+
+---
 
 ## ⏰ Time & Scheduling
-```
-NTP Time Sync Multiple fallback servers (ph.pool.ntp.org → pool.ntp.org → time.nist.gov → time.google.com)
-RTC Drift Compensation Software RTC with automatic drift adjustment
-EEPROM Time Persistence Saves epoch across reboots
-Timezone Support Configurable GMT offset + DST offset
-Auto-Sync Interval Configurable 1–24 hours
-Manual Sync Force NTP sync from web UI
-```
 
-## 🔌 Relay Control (11 Channels)
-```
-Manual Override ON/OFF/Auto modes per relay
-Custom Relay Names 15-character max, double-click to edit
-Active-Low Support Configurable relay logic
-Pin Mapping D0–D8 + GPIO3 (RX) + GPIO1 (TX)
-```
+### NTP Synchronization
+- Primary NTP server configuration (default: ph.pool.ntp.org)
+- Automatic fallback chain (4 servers):
+  - ph.pool.ntp.org → pool.ntp.org → time.nist.gov → time.google.com
+- Configurable GMT offset (seconds, e.g., 28800 for UTC+8)
+- Configurable daylight saving offset (seconds)
+- Adjustable sync interval (1-24 hours)
+- Manual sync trigger via web UI
+- Retry on failure every 30 seconds
+- Connection status indicators
 
-## 📅 Schedule Engine (8 schedules per relay)
-```
-Per-Schedule Enable/Disable Individual schedule toggles
-Start/Stop Times Hour, minute, second granularity
-Same-Day Windows Normal start < stop scheduling
-Overnight Windows Start > stop wraps across midnight
-Always-ON Detection Start == stop interpreted as 24/7 ON
-Overnight Badge UI indicator for wrap-around schedules
-Visual Indicators "🌙 Overnight" / "● Always ON" badges
-```
+### Internal RTC (Real-Time Clock)
+- Millis-based timekeeping with NTP calibration
+- Drift compensation algorithm (moving average)
+- Persists last known time to LittleFS
+- Survives reboots without WiFi
+- Drift bounds: 0.90x to 1.10x of nominal rate
 
-## 🖥️ Web Interface
-```
-Relays (/) Relay grid, manual control, schedule editing, name editing
-WiFi (/wifi) STA settings, network scan with RSSI bars, connection status
-Time (/ntp) NTP server, GMT/DST offsets, sync interval, manual sync
-AP (/ap) AP SSID/password, channel (1–13), hidden SSID toggle
-System (/system) Info dashboard, hostname config, restart, factory reset
+### 8-Slot Timer Schedules (per relay)
+- Start/stop time with second precision
+- **Day of Week** selection (Sun-Sat) with individual toggle
+- **Day of Month** selection (1-31) with individual toggle
+- Combined Day-of-Week + Day-of-Month filtering
 
-- UI Features
+### Schedule Behaviors
+- **Normal schedule**: ON between start and stop (same day)
+- **Overnight schedule**: ON when stop time is earlier than start (spans midnight)
+- **Always ON mode**: When start equals stop time, channel stays permanently ON during active days
+- Empty day mask: Schedule disabled for that slot
+- Empty month mask: All month days enabled
+- Visual badges on web UI showing schedule type
 
-· Live clock display with WiFi/NTP status dots
-· RSSI signal strength bars (1–4 bars)
-· Toast notifications for actions
-· Mobile-responsive CSS grid layout
-· Auto-refresh every 60 seconds
-```
+### Time Display
+- Live clock on every page (updates every second)
+- Connection status dots (green/yellow/red)
+- Time fetch API endpoint
 
-## 🔧 Configuration Management
-```
-EEPROM Storage 2048 bytes with magic number validation
-Version Migration Auto-upgrades from v1 → v2 → v3 → v4
-ExtConfig Partition Extended settings at offset 1024
-Factory Reset Erases all EEPROM, reverts to defaults
-Safe Relay Default All relays OFF on boot
-```
+---
 
-## 🛡️ Security & Stability
-```
-Non-Blocking Loop No delay() calls; state machines for WiFi/NTP
-WiFi Backoff 5-minute cooldown after 10 failed attempts
-Watchdog Safe Proper yield behavior
-JSON Parsing Memory-efficient manual parsing + StaticJsonDocument
-```
+## 🔌 Relay Control
 
-## 📡 API Endpoints
-```
-/api/relays GET Get all relay states and schedules
-/api/relay/manual POST Set manual override (ON/OFF)
-/api/relay/reset POST Return to auto/schedule mode
-/api/relay/save POST Save schedules for a relay
-/api/relay/name POST Update relay custom name
-/api/time GET Current time, WiFi/NTP status
-/api/wifi GET/POST Get/save STA settings
-/api/wifi/scan POST/GET Start async scan / get results
-/api/ntp GET/POST Get/save NTP settings
-/api/ntp/sync POST Force NTP sync
-/api/ap GET/POST Get/save AP settings
-/api/system GET/POST System info / save hostname
-/api/reset POST Soft restart
-/api/factory-reset POST Full factory reset
-```
+### 11 Relay Channels
+- GPIO pins: D0, D1, D2, D3, D4, D5, D6, D7, D8, GPIO3, GPIO1
+- Configurable active-low logic (relay ON = LOW)
+- Individual naming (up to 15 characters, double-click to edit inline)
+- Manual override with ON/OFF buttons
+- Auto mode (schedule-driven)
 
-## 🔄 Captive Portal Detection
-```
-OS/Platform Probe Path
-iOS / macOS /hotspot-detect.html, /library/test/success.html
-Android / Chrome /generate_204
-Firefox /success.txt, /canonical.html
-Windows (NCSI) /connecttest.txt, /ncsi.txt, /redirect
-```
+### Web Control Interface
+- Real-time relay state feedback
+- Grid layout (responsive, 1-3 columns)
+- Color-coded badges (Green=ON, Red=OFF, Orange=MANUAL)
+- Inline schedule editor with instant preview
+- Individual save per relay
+- Auto-refresh every 60 seconds
 
-## 📊 System Information Dashboard
-```
-· STA IP address
-· AP IP address
-· Free heap memory (KB)
-· Uptime (hours/minutes/seconds)
-· mDNS hostname
-· WiFi RSSI with quality descriptor (Excellent/Good/Fair/Weak)
-· NTP last sync time
-· Current NTP server
-```
+### Safety Features
+- All relays initialized OFF on boot
+- Manual override persists until explicitly reset
+- Schedule processing yields to prevent watchdog triggers
 
-## 🧠 Advanced Features
-```
-RTC Drift Learning Adjusts internal clock based on NTP vs. millis() drift (clamped 0.90–1.10)
-EEPROM Wear Reduction Only writes on config changes
-Schedule Engine Optimization Early exit when ON condition found
-WiFi State Machine Non-blocking connection attempts
-Hidden AP Support Toggle SSID broadcast on/off
-```
+---
 
-## 📦 Default Settings
-```
-Setting Default Value
-AP SSID ESP8266_11CH_Timer_Switch
-AP Password ESP8266-admin
-AP Channel 6
-NTP Server ph.pool.ntp.org
-GMT Offset 28800 (UTC+8)
-DST Offset 0
-Sync Interval 1 hour
-Hostname esp8266relay
-Relay Names "Relay 1" through "Relay 11"
-```
+## 💾 Configuration Management
 
-## 🔌 Pinout Reference
-```
-Relay GPIO NodeMCU Label
-1 16 D0
-2 5 D1
-3 4 D2
-4 0 D3
-5 2 D4
-6 14 D5
-7 12 D6
-8 13 D7
-9 15 D8
-10 3 RX
-11 1 TX
-```
+### Persistent Storage (LittleFS)
+Three configuration files with atomic writes:
+
+1. **`/system.cfg`** - Main configuration (magic number: 0x1234, version 6)
+   - WiFi STA credentials (SSID + password)
+   - AP credentials
+   - NTP server settings
+   - Hostname
+   - RTC drift/epoch data
+
+2. **`/ext.cfg`** - Extended configuration (magic number: 0xEC)
+   - AP channel
+   - NTP sync interval
+   - AP hidden flag
+
+3. **`/relays.cfg`** - Relay schedules and names
+   - 11 relays × 8 schedules each
+   - Manual override states
+   - Custom names
+
+### Atomic File Operations
+- Write to `.tmp` file first
+- Verify write integrity (size check)
+- Atomic rename to target path
+- Power-loss protection for all config saves
+
+### Configuration Optimization
+- Delayed write strategy (10-second buffer)
+- Dirty flag tracking
+- Automatic flush in main loop
+- Manual flush before restart/reset
+
+### Factory Reset
+- Removes all configuration files
+- Restarts with default settings
+- Default credentials: `ESP8266_11CH_Timer_Switch` / `ESP8266-admin`
+
+---
+
+## 🖥️ Web User Interface
+
+### Responsive Design
+- Mobile-friendly (max-width 500px breakpoint)
+- Grid auto-fill layout
+- Sticky header with navigation
+- Toast notifications for actions
+
+### Pages
+1. **Relays** (`/`) - Main control panel with schedules
+2. **WiFi** (`/wifi`) - Network scanning & STA configuration
+3. **Time** (`/ntp`) - NTP settings & manual sync
+4. **AP** (`/ap`) - Access point configuration
+5. **System** (`/system`) - Device info, hostname, restart, factory reset
+
+### Interactive Elements
+- Inline relay renaming (double-click, Enter to save, Escape to cancel)
+- Day/month toggles with visual feedback
+- Time picker with seconds precision
+- Network scanner with progress indication
+- WiFi signal strength bars
+- Confirmation dialogs for destructive actions
+
+### Visual Design
+- Material-inspired color scheme (#1565C0 primary blue)
+- Smooth hover transitions
+- Card-based layout with shadows
+- Color-coded status indicators
+- Custom scrollbar styling
+- Monospace time inputs
+
+---
+
+## 🔧 API Endpoints
+
+### Relay APIs
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/relays` | Get all relay states & schedules |
+| POST | `/api/relay/manual` | Set manual ON/OFF |
+| POST | `/api/relay/reset` | Return to auto mode |
+| POST | `/api/relay/save` | Save schedules for one relay |
+| POST | `/api/relay/name` | Rename a relay |
+
+### WiFi APIs
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/wifi` | Get STA status & SSID |
+| POST | `/api/wifi` | Save WiFi credentials & restart |
+| POST | `/api/wifi/scan` | Start async network scan |
+| GET | `/api/wifi/scan` | Get scan results |
+
+### Time APIs
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/time` | Get current time & status dots |
+| GET | `/api/ntp` | Get NTP configuration |
+| POST | `/api/ntp` | Save NTP settings |
+| POST | `/api/ntp/sync` | Trigger manual NTP sync |
+
+### System APIs
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/system` | System info (IP, heap, uptime, etc.) |
+| POST | `/api/system` | Save hostname |
+| GET | `/api/ap` | Get AP configuration |
+| POST | `/api/ap` | Save AP config & restart AP |
+| POST | `/api/reset` | Restart device |
+| POST | `/api/factory-reset` | Factory reset & restart |
+
+### Captive Portal Endpoints
+- `/hotspot-detect.html`, `/library/test/success.html`, `/generate_204`
+- `/success.txt`, `/canonical.html`, `/connecttest.txt`, `/ncsi.txt`
+- `/redirect`
+- Catch-all: Redirects to AP IP
+
+---
+
+## 🛡️ Reliability Features
+
+### Watchdog Protection
+- Proper `yield()` calls in loops
+- Non-blocking WiFi state machine
+- Async network scanning
+
+### Memory Optimization
+- PROGMEM storage for HTML pages
+- String concatenation with reserve()
+- StaticJsonDocument for fixed-size parsing
+- DynamicJsonDocument for scan results only
+
+### Power-Loss Safety
+- Atomic file writes with verification
+- Delayed config saves
+- Config flush before restart/reset
+
+### Error Handling
+- JSON validation on all POST endpoints
+- Bounds checking on all array accesses
+- NTP epoch validation (rejects invalid timestamps)
+- File size verification on reads
+
+---
+
+## 📊 System Monitoring
+
+### Dashboard Stats (Web UI)
+- STA IP address & connection status
+- AP IP address
+- Free heap memory (KB)
+- System uptime
+- mDNS hostname
+- WiFi RSSI with quality description (Excellent/Good/Fair/Weak)
+- Last NTP sync time ("Just now" / "X min ago" / "Never")
+- Active NTP server
+
+### Live Updates
+- Clock ticks every second
+- System stats refresh every 5 seconds
+- Relay grid auto-refresh every 60 seconds (when idle)
+- Toast notifications with 3-second timeout
+
+---
+
+## 🔄 Boot Sequence
+
+1. Initialize all relays OFF
+2. Mount LittleFS (auto-format if first boot)
+3. Load system configuration
+4. Load extended configuration
+5. Load relay configurations (with backward compatibility)
+6. Restore RTC state
+7. Attempt WiFi STA connection (15-second timeout)
+8. Start NTP client (if WiFi connected)
+9. Start mDNS responder (if WiFi connected)
+10. Start AP (always)
+11. Start DNS server
+12. Start web server
+13. Enter main loop
+
+---
+
+## 🎨 UI Color Scheme
+- **Green** (#69F0AE): WiFi connected / Relay ON
+- **Red** (#FF5252): WiFi disconnected / Relay OFF
+- **Yellow** (#FFD740): NTP unsynchronized
+- **Blue** (#1565C0): Primary actions / Active elements
+- **Gray** (#546E7A): Neutral / Manual mode
+- **Purple** (#7B1FA2): Month day selections
+- **Amber** (#F9A825): Warnings
+- **Dark Red** (#B71C1C): Danger actions
+
+---
+
+## 🔒 Security Considerations
+- AP password minimum 8 characters (when set)
+- STA password stored in LittleFS (not encrypted)
+- No authentication required for web interface (local network only)
+- Captive portal redirects to configuration
+- Factory reset accessible without authentication
+
+---
+
+## 📝 Default Configuration
+| Setting | Default Value |
+|---------|---------------|
+| AP SSID | `ESP8266_11CH_Timer_Switch` |
+| AP Password | `ESP8266-admin` |
+| AP Channel | 6 |
+| AP Hidden | No |
+| NTP Server | `ph.pool.ntp.org` |
+| GMT Offset | 28800 (UTC+8) |
+| DST Offset | 0 |
+| NTP Sync Interval | 1 hour |
+| mDNS Hostname | `esp8266relay` |
+| Relay Names | "Relay 1" through "Relay 11" |
+| All Schedules | Disabled, All days selected |
+
+---
+
+## 🚀 Advanced Features
+- Overnight schedule detection with moon icon (🌙)
+- Always-ON schedule with special badge
+- Day-of-week + Day-of-month AND logic for complex schedules
+- RTC drift learning and compensation
+- Progressive NTP fallback on failures
+- Non-blocking operations throughout (no `delay()` in production code)
+- JSON API for potential third-party integration
+- Atomic file system operations prevent corruption on power loss
 </details>
