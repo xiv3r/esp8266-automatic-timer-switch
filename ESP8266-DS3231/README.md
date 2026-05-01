@@ -1,6 +1,6 @@
 # Requirements 
 - ESP8266 v1. 12E 160MHZ NodeMCU
-- 1-9 Channel Relay
+- 5v 1-9 Channel Relay
 - Dupont Wire
 - DS3231 RTC Module
 - 5v 2-3a Power Supply
