@@ -1,3 +1,8 @@
+# ESP8266 WITH LED STATUS
+  - blink fast: wifi is disconnected
+  - blink slow: wifi is connected but ntp is inactive
+  - led off   : wifi and ntp is working
+
 # GPIO Connections
 ```
 8CH  |  ESP8266
