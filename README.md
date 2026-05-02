@@ -406,8 +406,8 @@ Three configuration files with atomic writes:
 - Atomic file system operations prevent corruption on power loss
 </details>
 
-# ESP8266 Board Support
-- Changes for esp8266-generic-sketch.ino
+### ESP8266 All Board Support (model & variations)
+- Changes for esp8266-generic-sketch.ino before compiling.
 ```
 #define NUM_RELAYS 11 // Change 11 to the number of relays supported by your board 
 
