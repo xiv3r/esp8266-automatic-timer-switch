@@ -405,3 +405,11 @@ Three configuration files with atomic writes:
 - JSON API for potential third-party integration
 - Atomic file system operations prevent corruption on power loss
 </details>
+
+# Other ESP8266 Board
+- changes for sketch.ino
+```
+#define NUM_RELAYS 11 // Change 11 to number of relays supported by your board 
+
+const int  relayPins[NUM_RELAYS] = { D0, D1, D2, D3, D4, D5, D6, D7, D8, 3, 1 }; // Reduce or Add GPIO based on your esp8266 board
+```
