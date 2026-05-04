@@ -1,6 +1,6 @@
 # Requirements 
-- ESP8266 v1 12E 160MHZ
-- 5v 1-11 Channel Relay
+- ESP8266 v.1 12E 160MHZ
+- 5v 1-13 Channel Relay
 - Dupont Wire
 - Home Wifi for NTP/RTC sync
 - 5v 3a Power Supply
@@ -19,7 +19,7 @@ firmware: 0x0
 ```
 
 # WiFi Key
-- WiFi SSID: `ESP8266_9CH_Smart_Switch`
+- WiFi SSID: `ESP8266_Smart_Switch`
 - Password: `ESP8266-admin`
 
 # Activation
@@ -30,7 +30,7 @@ firmware: 0x0
 
 # Access
 ° Direct Access
-- mDNS:`esp8266-relay.local`
+- mDNS:`esp8266relay.local`
 - Captive Portal: Auto redirect
 - Gateway:`192.168.4.1`
 - WAN:`192.168.1.123`
@@ -50,6 +50,10 @@ IN6 _____ D6
 IN7 _____ D7
 IN8 _____ D8
 IN9 _____ D9
+IN10 ____ RX
+IN11 ____ TX
+IN12 ____ S2
+IN13 ____ S3
 GND _____ GND
 ```
 
