@@ -289,21 +289,18 @@ Data Integrity
 
 Configuration Structure
 
-```cpp
-SystemConfig {
     magic: uint16_t       // 0x1234
     version: uint8_t      // EEPROM version
-    sta_ssid[32]         // WiFi SSID
-    sta_password[64]     // WiFi Password
-    ap_ssid[32]          // AP SSID
-    ap_password[32]      // AP Password
-    ntp_server[48]       // NTP Server URL
-    gmt_offset: long     // Timezone offset (seconds)
-    daylight_offset: int // DST offset (seconds)
-    last_rtc_epoch: time_t    // Last known time
-    rtc_drift: float     // Clock drift factor
-    hostname[32]         // mDNS hostname
-}
+    sta_ssid[32]          // WiFi SSID
+    sta_password[64]      // WiFi Password
+    ap_ssid[32]           // AP SSID
+    ap_password[32]       // AP Password
+    ntp_server[48]        // NTP Server URL
+    gmt_offset: long      // Timezone offset (seconds)
+    daylight_offset: int  // DST offset (seconds)
+    last_rtc_epoch: time_t// Last known time
+    rtc_drift: float      // Clock drift factor
+    hostname[32]          // mDNS hostname
 
 ---
 
