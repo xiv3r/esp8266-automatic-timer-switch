@@ -1,6 +1,6 @@
 # Requirements 
 - ESP8266 v.1 12E 160MHZ
-- 5v 1-13 Channel Relay
+- 5v 1-9 Channel Relay
 - Dupont Wire
 - Home Wifi for NTP/RTC sync
 - 5v 3a Power Supply
@@ -48,12 +48,9 @@ IN4 _____ D3
 IN5 _____ D5
 IN6 _____ D6
 IN7 _____ D7
-IN8 _____ D8
-IN9 _____ D9
-IN10 ____ RX
-IN11 ____ TX
-IN12 ____ S2
-IN13 ____ S3
+IN8 _____ D9
+IN9 _____ RX
+IN10 ____ TX
 GND _____ GND
 ```
 
