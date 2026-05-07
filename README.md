@@ -61,6 +61,7 @@ GND _____ GND
 # Full Features
 </summary>
 
+```
 ---
 
 🔌 ESP8266 9-CHANNEL RELAY SMART SWITCH — COMPLETE FEATURE SPECIFICATION
