@@ -19,7 +19,7 @@ firmware: 0x0
 ```
 
 # WiFi Key
-- WiFi SSID: `ESP8266_Smart_Switch`
+- WiFi SSID: `ESP8266_9CH_Smart_Switch`
 - Password: `ESP8266-admin`
 
 # Activation
