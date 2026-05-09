@@ -11,6 +11,7 @@
 # Arduino Libraries
 - ArduinoJson
 - NTPClient
+- RTClib 1.14.1
 
 # Installation
 - Download the [flasher](https://github.com/xiv3r/esp8266-automatic-timer-switch/releases/tag/flasher) and [firmware.bin](https://github.com/xiv3r/esp8266-automatic-timer-switch/raw/refs/heads/main/esp8266-firmware-0x0.bin) and flash using `0x0` offset
