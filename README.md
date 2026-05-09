@@ -53,8 +53,8 @@ IN9 _____ TX
 GND _____ GND
 ```
 
-<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/images/image1.png">
-<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/images/image2.png">
+<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/pic-1.png">
+<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/pic-2.png">
 
 <details><summary>
 
