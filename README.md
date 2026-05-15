@@ -3,10 +3,10 @@
 - 5v 1-9 Channel Relay
 - Dupont Wire
 - Home Wifi for NTP/RTC sync
-- 5v 3a Power Supply
+- 5v 3-5a Power Supply
 
 `Optional`
-- 5vDC Battery (Maintain Power and Timer)
+- 5v UPS (Maintain Power and Timer)
 
 # Arduino Libraries
 - ArduinoJson
