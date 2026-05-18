@@ -1,9 +1,9 @@
 # Requirements 
-- ESP8266 v.1 12E 160MHZ
-- 5v 1-9 Channel Relay
+- ESP8266 v.1 12E 160MHZ / (Wemos D1 Mini)
+- 5v 1-8 Channel Relay
 - Dupont Wire
 - Home Wifi for NTP/RTC sync
-- 5v 3-5a Power Supply
+- 5v 2-5a Power Supply
 
 `Optional`
 - 5v UPS (Maintain Power and Timer)
@@ -20,7 +20,7 @@ firmware: 0x0
 ```
 
 # WiFi Key
-- WiFi SSID: `ESP8266_9CH_Timer_Switch`
+- WiFi SSID: `ESP8266_8CH_Timer_Switch`
 - Password: `ESP8266-admin`
 
 # Activation
@@ -45,12 +45,11 @@ VCC _____ 5VIN
 IN1 _____ D0
 IN2 _____ D1
 IN3 _____ D2
-IN4 _____ D3
-IN5 _____ D5
-IN6 _____ D6
-IN7 _____ D7
-IN8 _____ RX
-IN9 _____ TX
+IN4 _____ D5
+IN5 _____ D6
+IN6 _____ D7
+IN7 _____ RX
+IN8 _____ TX
 GND _____ GND
 ```
 
@@ -66,7 +65,7 @@ GND _____ GND
 ```
 Overview
 
-The ESP8266 9-Channel Relay Smart Switch is a comprehensive home, business, and farm automation system featuring:
+The ESP8266 8-Channel Relay Smart Switch is a comprehensive home, business, and farm automation system featuring:
 
 · 9 configurable relay channels (expandable up to 16)
 · 8 programmable schedules per relay with day-of-week and day-of-month selection
@@ -84,8 +83,8 @@ Relay Configuration
 
 Feature Specification
 Maximum Relays 16 channels
-Default Relays 9 channels
-Supported GPIO Pins D0(16), D1(5), D2(4), D3(0), D5(14), D6(12), D7(13), RX(3), TX(1)
+Default Relays 8 channels
+Supported GPIO Pins D0(16), D1(5), D2(4), D5(14), D6(12), D7(13), RX(3), TX(1)
 Relay Logic Configurable Active LOW/HIGH
 Pin Assignment Fully customizable via web interface
 
@@ -95,12 +94,11 @@ Relay # GPIO Pin Name
 1 16 D0
 2 5 D1
 3 4 D2
-4 0 D3
-5 14 D5
-6 12 D6
-7 13 D7
-8 3 RX
-9 1 TX
+4 14 D5
+5 12 D6
+6 13 D7
+7 3 RX
+8 1 TX
 
 Status LED
 
