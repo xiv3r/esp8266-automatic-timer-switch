@@ -1,3 +1,6 @@
+## ESP32
+👉 https://github.com/xiv3r/esp32-automatic-timer-switch
+
 # Requirements 
 - ESP8266 v.1 12E 160MHZ / (Wemos D1 Mini)
 - 5v 1-8 Channel Relay
