@@ -32,9 +32,9 @@ firmware: 0x0
 # Relay Name
 - Double click relay name to edit
 
-
-# GMT offset (your country time)
-- ⚠️ Search your country `gmt offsets in seconds` and paste it on the Time -> GMT Offset
+# GMT offset
+> ⚠️ Set to your country time
+- Search your country `gmt offsets in seconds` and paste it on the Time -> GMT Offset
 
 # Access
 ° Direct Access
@@ -60,8 +60,9 @@ IN8 _____ TX
 GND _____ GND
 ```
 
-<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/pic-1.png">
-<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/pic-2.png">
+<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/scr1.png">
+<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/scr2.png">
+<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/scr3.png">
 
 <details><summary>
 
