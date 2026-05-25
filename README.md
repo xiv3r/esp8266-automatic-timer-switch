@@ -63,6 +63,8 @@ GND _____ GND
 <img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/scr1.png">
 <img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/scr2.png">
 <img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/scr3.png">
+<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/pic1.jpg">
+<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/pic2.jpg">
 
 <details><summary>
 
