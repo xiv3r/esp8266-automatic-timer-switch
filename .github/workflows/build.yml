@@ -15,19 +15,22 @@ jobs:
 
     - name: Install Arduino-cli
       run: |
-        curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/local/bin sh
-        arduino-cli config init
-        arduino-cli config add board_manager.additional_urls https://arduino.esp8266.com/stable/package_esp8266com_index.json
-        arduino-cli core update-index
-        arduino-cli core install esp8266:esp8266
+        #curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/local/bin sh
+        #arduino-cli config init
+        #arduino-cli config add board_manager.additional_urls https://arduino.esp8266.com/stable/package_esp8266com_index.json
+        #arduino-cli core update-index
+        #arduino-cli core install esp8266:esp8266
         
         # Install libraries
-        arduino-cli lib install "Preferences"
-        arduino-cli lib install "ArduinoJson"
-        arduino-cli lib install "NTPClient"
-        git clone --depth 1 --branch 1.14.1 https://github.com/adafruit/RTClib.git ~/Arduino/libraries/RTClib
-        
-        arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 --output-dir firmware .
+        #arduino-cli lib install "Preferences"
+        #arduino-cli lib install "ArduinoJson"
+        #arduino-cli lib install "NTPClient"
+        #git clone --depth 1 --branch 1.14.1 https://github.com/adafruit/RTClib.git ~/Arduino/libraries/RTClib
+
+        # Compile
+        #arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 --output-dir firmware .
+
+        wget -O esp8266-dump-0x0.bin https://github.com/xiv3r/arduino/releases/download/firmware/arduino.ino.merged.bin
          
     - name: Determine release tag
       id: get_tag
@@ -35,7 +38,7 @@ jobs:
         if [ "${{ github.event_name }}" == "release" ]; then
           TAG_NAME="${{ github.event.release.tag_name }}"
         else
-          TAG_NAME="v.3"
+          TAG_NAME="esp8266"
         fi
         echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
 
