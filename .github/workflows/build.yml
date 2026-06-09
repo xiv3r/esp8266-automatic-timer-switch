@@ -15,8 +15,8 @@ jobs:
 
     - name: Install
       run: |
-        sudo apt update
-        sudo apt install wget -y
+        mkdir -p download
+        cd download
         wget -O esp8266-firmware-0x0.bin https://github.com/xiv3r/arduino/releases/download/firmware/arduino.ino.bin
          
     - name: Determine release tag
@@ -73,6 +73,6 @@ jobs:
       with:
         tag_name: ${{ steps.get_tag.outputs.tag_name }}
         files: |
-          firmware/*.bin
+          download/*.bin
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
