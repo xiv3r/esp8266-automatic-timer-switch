@@ -30,7 +30,7 @@ jobs:
         # Compile
         #arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 --output-dir firmware .
 
-        wget -O esp8266-dump-0x0.bin https://github.com/xiv3r/arduino/releases/download/firmware/arduino.ino.merged.bin
+        wget -O esp8266-dump-0x0.bin https://github.com/xiv3r/arduino/releases/download/firmware/arduino.ino.bin
          
     - name: Determine release tag
       id: get_tag
