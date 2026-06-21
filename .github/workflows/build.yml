@@ -1,10 +1,10 @@
-name: Build ESP8266
+name: Build ESP8266 Firmware
 
 on:
   workflow_dispatch:
   release:
     types: [published]
-    
+      
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
@@ -13,11 +13,31 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v5
 
-    - name: Install
+    - name: Install Arduino-cli
       run: |
-        mkdir -p download
-        cd download
-        wget -O esp8266-firmware-0x0.bin https://github.com/xiv3r/arduino/releases/download/firmware/arduino.ino.bin
+        sudo apt update 
+        sudo apt install wget -y
+        
+        # Arduino-Cli Debian package
+        wget -O arduino-cli.deb https://github.com/arduino/arduino-cli/releases/download/v1.5.0/arduino-cli_1.5.0-1_amd64.deb
+        sudo dpkg -i arduino-cli.deb
+        sudo apt --fix-broken install -y
+        sudo dpkg --configure -a
+        
+        arduino-cli config init
+        arduino-cli config add board_manager.additional_urls https://arduino.esp8266.com/stable/package_esp8266com_index.json
+        arduino-cli core update-index
+        arduino-cli core install esp8266:esp8266
+        
+        # Install libraries
+        arduino-cli lib install "ArduinoJson"
+        arduino-cli lib install "PubSubClient"
+        arduino-cli lib install "NTPClient"
+        git clone --depth 1 --branch 1.14.1 https://github.com/adafruit/RTClib.git ~/Arduino/libraries/RTClib
+
+        # Compile firmware
+        mv esp8266-sketch.ino esp8266-automatic-timer-switch.ino
+        arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 --clean --output-dir firmware .
          
     - name: Determine release tag
       id: get_tag
@@ -73,6 +93,6 @@ jobs:
       with:
         tag_name: ${{ steps.get_tag.outputs.tag_name }}
         files: |
-          download/*.bin
+          firmware/*.bin
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
