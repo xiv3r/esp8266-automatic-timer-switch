@@ -38,6 +38,7 @@ jobs:
         # Compile firmware
         mv esp8266-sketch.ino esp8266-automatic-timer-switch.ino
         arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 --clean --output-dir firmware .
+        mv firmware/*.ino.bin firmware/esp8266-firmware-0x0.bin
          
     - name: Determine release tag
       id: get_tag
