@@ -39,7 +39,8 @@ jobs:
         cd ESP8266-DS3231
         mv esp8266-sketch.ino ESP8266-DS3231.ino
         arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 --clean --output-dir firmware .
-         
+        mv firmware/*.ino.bin firmware/esp8266-ds3231-0x0.bin
+        
     - name: Determine release tag
       id: get_tag
       run: |
