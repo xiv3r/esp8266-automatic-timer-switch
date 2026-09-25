@@ -1,6 +1,6 @@
 /*
 ===============================================================================
- *  ESP8266 6-Channel Relay Smart Switch w/ LED Status Indicator
+ *  ESP8266 6-Channel Relay Smart Switch w/ LED Status Indicator DS3231
  *  Author: Raff Alds
  *  Github: https://www.github.com/xiv3r
  *  License: GPLv3
