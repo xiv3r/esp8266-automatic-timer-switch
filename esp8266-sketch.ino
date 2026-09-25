@@ -1,12 +1,9 @@
 /*
 ============================================================
- *  ESP8266 8-Channel Relay Smart Switch w/ LED Status Indicator
+ *  ESP8266 8-Channel Relay Smart Switch w/ LED Status Indicator NTP
  *  Author: Raff Alds
  *  Github: https://www.github.com/xiv3r
- *  Project: Home, Business, Farm Automation etc...
- *  Modified: Self-recovery without restarts - Pure non-blocking
- *  Enhanced: Long-term stability with memory/connection management
- *  Added: Month-of-year schedule support (Dec 2024)
+ *  License: GPLv3
 ============================================================
 */
 
