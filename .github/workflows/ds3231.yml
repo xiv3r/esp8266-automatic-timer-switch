@@ -1,4 +1,4 @@
-name: Build ESP8266 Firmware
+name: Build ESP8266 DS3231 Firmware
 
 on:
   workflow_dispatch:
@@ -14,11 +14,10 @@ jobs:
       uses: actions/checkout@v5
 
     - name: Install Arduino-cli
-      run: |
+      run: |        
+        # Arduino-Cli Debian package
         sudo apt update 
         sudo apt install wget -y
-        
-        # Arduino-Cli Debian package
         wget -O arduino-cli.deb https://github.com/arduino/arduino-cli/releases/download/v1.5.1/arduino-cli_1.5.1-1_amd64.deb
         sudo dpkg -i arduino-cli.deb
         sudo apt --fix-broken install -y
@@ -50,45 +49,6 @@ jobs:
           TAG_NAME="esp8266-ds3231"
         fi
         echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-
-    - name: Delete existing release assets
-      uses: actions/github-script@v8
-      with:
-        script: |
-          const { data: releases } = await github.rest.repos.listReleases({
-            owner: context.repo.owner,
-            repo: context.repo.repo
-          });
-          
-          const targetRelease = releases.find(release => release.tag_name === '${{ steps.get_tag.outputs.tag_name }}');
-          
-          if (targetRelease) {
-            console.log(`Found release with tag: ${{ steps.get_tag.outputs.tag_name }}`);
-            console.log(`Release ID: ${targetRelease.id}`);
-            
-            const { data: assets } = await github.rest.repos.listReleaseAssets({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: targetRelease.id
-            });
-            
-            console.log(`Found ${assets.length} assets to delete`);
-            
-            for (const asset of assets) {
-              console.log(`Deleting asset: ${asset.name} (ID: ${asset.id})`);
-              await github.rest.repos.deleteReleaseAsset({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                asset_id: asset.id
-              });
-            }
-            
-            console.log('All existing assets deleted');
-          } else {
-            console.log(`No release found with tag: ${{ steps.get_tag.outputs.tag_name }}`);
-          }
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Upload files to existing release
       uses: softprops/action-gh-release@v3
