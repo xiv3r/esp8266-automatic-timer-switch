@@ -1,9 +1,15 @@
 name: Build ESP8266 DS3231 Firmware
 
 on:
-  workflow_dispatch:
-  release:
-    types: [published]
+  push:
+    branches:
+      - main
+    paths:
+      - 'ESP8266-DS3231/*.ino'
+# on:
+#  workflow_dispatch:
+#   release:
+#    types: [published]
       
 jobs:
   build-and-release:
