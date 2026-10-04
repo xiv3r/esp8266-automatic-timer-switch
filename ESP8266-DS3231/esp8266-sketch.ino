@@ -2043,6 +2043,7 @@ void checkFactoryResetButton() {
     static unsigned long lastDebounce = 0;
     static bool lastButtonState = HIGH;
     static bool isPressing = false;    
+    static bool solidSet = false;
     if (factoryResetInProgress) return;    
     bool currentState = digitalRead(FACTORY_RESET_PIN);
     unsigned long now = millis();    
@@ -2067,7 +2068,6 @@ void checkFactoryResetButton() {
     if (isPressing && !factoryResetInProgress) {
         unsigned long holdTime = now - factoryResetPressStart;
         if (holdTime >= FACTORY_RESET_HOLD_MS) {
-            static bool solidSet = false;
             if (!solidSet) {
                 digitalWrite(STATUS_LED_PIN, STATUS_LED_ACTIVE_LOW ? LOW : HIGH);
                 solidSet = true;
