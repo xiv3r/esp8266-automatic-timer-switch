@@ -644,7 +644,7 @@ hr{border:none;border-top:1px solid #ECEFF1;margin:14px 0}
 .rtc-ok{background:#E8F5E9;color:#2E7D32}
 .rtc-na{background:#FFEBEE;color:#C62828}
 .rtc-temp{font-size:12px;color:#607D8B}
-@media(max-width:500px){.grid{grid-template-columns:1fr}.ibar{grid-template-columns:1fr}.input-row{flex-direction:column}.day{width:34px;height:34px;font-size:10px}.mday{width:30px;height:30px;font-size:9px}.month{width:40px;height:34px;font-size:9px}}
+@media(max-width:500px){.grid{grid-template-columns:1fr}.ibar{grid-template-columns:1fr}.input-row{flex-direction:column}.day{width:34px;height:34px;font-size:10px}.mday{width:30px;height:30px;font-size:9px}.month{width:40px;height:34px;font-size:9px}.sys-action,.bntp-action{min-width:0;flex:1 1 0;padding:9px 6px;font-size:12px}}
 )css";
 
 // =============================================================================
@@ -1700,9 +1700,9 @@ const char pins_html[] PROGMEM = R"raw(<!DOCTYPE html>
 </div>
 
 <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-<button class="btn badd" onclick="addRelay()" style="padding:9px 16px">&#x2795; Add Relay</button>
-<button class="btn bsave" onclick="savePins()" style="padding:9px 16px">&#x1F4BE; Save &amp; Apply</button>
-<button class="btn bwarn" id="resetPinsBtn" onclick="resetPinsToDefault()" style="padding:9px 16px;background:#F9A825;color:#212121">&#x1F504; Reset All</button>
+<button class="btn sys-action" onclick="addRelay()" style="background:#1565C0;color:#fff">&#x2795; Add Relay</button>
+<button class="btn sys-action" onclick="savePins()" style="background:#1565C0;color:#fff">&#x1F4BE; Save &amp; Apply</button>
+<button class="btn sys-action" id="resetPinsBtn" onclick="resetPinsToDefault()" style="background:#1565C0;color:#fff">&#x1F504; Reset All</button>
 </div>
 </div>
 
@@ -1876,7 +1876,7 @@ function resetPinsToDefault(){
       toast('Reset failed: ' + (d.error || 'unknown'), false);
       if(btn) {
         btn.disabled = false;
-        btn.textContent = '🔄 Reset GPIO to Default';
+        btn.textContent = '🔄 Reset All';
       }
     }
   })
