@@ -33,14 +33,15 @@ jobs:
         
         # Install libraries
         arduino-cli lib install "ArduinoJson"
-        arduino-cli lib install "PubSubClient"
         arduino-cli lib install "NTPClient"
         arduino-cli lib install "RTClib"
         
         # Compile firmware
-        mv esp8266-sketch.ino esp8266-automatic-timer-switch.ino
-        arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 --clean --output-dir firmware .
+        mv *.ino esp8266-automatic-timer-switch.ino
+        arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2:xtal=160,eesz=4M3M,mmu=4816 --output-dir firmware .
+        
         mv firmware/*.ino.bin firmware/esp8266-firmware-0x0.bin
+        mv firmware/*.bin .
 
     - name: Commit firmware binary
       run: |
@@ -66,6 +67,6 @@ jobs:
       with:
         tag_name: ${{ steps.get_tag.outputs.tag_name }}
         files: |
-          firmware/*.bin
+             *.bin
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
