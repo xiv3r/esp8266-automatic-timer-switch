@@ -28,8 +28,8 @@ firmware: 0x0
 - Go to `192.168.4.1 -> time` tap sync browser to set the rtc time
 
 # Relay Name
-- Double click relay name to edit
-
+- Double tap relay name to edit
+- 
 # Access
 ° Direct Access
 - mDNS:`esp8266-relay.local`
