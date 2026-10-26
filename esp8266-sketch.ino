@@ -3179,7 +3179,7 @@ void initDefaults() {
     sysConfig.magic = EEPROM_MAGIC;
     sysConfig.version = EEPROM_VERSION;
     strcpy(sysConfig.ap_ssid, "ESP8266_6CH_Timer_Switch");
-    strcpy(sysConfig.ap_password, "ESP8266-admin");
+    strcpy(sysConfig.ap_password, "12345678");
     strcpy(sysConfig.ntp_server, "time.google.com");
     sysConfig.gmt_offset = 28800;
     sysConfig.daylight_offset = 0;
