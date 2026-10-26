@@ -1473,7 +1473,6 @@ function loadWiFiInfo(){
 }
 
 loadWiFiInfo();
-setInterval(loadWiFiInfo, 5000);
 
 let scanTimer=null,scanning=false;
 function startScan(){
