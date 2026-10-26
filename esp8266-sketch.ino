@@ -659,7 +659,7 @@ hr{border:none;border-top:1px solid #ECEFF1;margin:14px 0}
 .rtc-ok{background:#E8F5E9;color:#2E7D32}
 .rtc-na{background:#FFEBEE;color:#C62828}
 .rtc-temp{font-size:12px;color:#607D8B}
-@media(max-width:500px){.grid{grid-template-columns:1fr}.ibar{grid-template-columns:1fr}.input-row{flex-direction:column}.day{width:34px;height:34px;font-size:10px}.mday{width:30px;height:30px;font-size:9px}.month{width:40px;height:34px;font-size:9px}.sys-action,.bntp-action{min-width:0;flex:1 1 0;padding:9px 6px;font-size:12px}}
+@media(max-width:500px){.grid{grid-template-columns:1fr}.ibar{grid-template-columns:1fr}.input-row{flex-direction:column}.day{width:34px;height:34px;font-size:10px}.mday{width:30px;height:30px;font-size:9px}.month{width:40px;height:34px;font-size:9px}.sys-action,.bntp-action{min-width:0;flex:1 1 0;padding:9px 6px;font-size:12px}.hdr-r{font-size:10px;gap:3px}}
 )css";
 
 // =============================================================================
@@ -679,7 +679,7 @@ const char index_html[] PROGMEM = R"raw(<!DOCTYPE html>
 <a href="/pins">Pins</a>
 <a href="/system">System</a>
 </nav>
-<div class="hdr-r"><span class="dot wd"></span><span class="dot nd"></span>&nbsp;<span id="clk">--:--:--</span></div>
+<div class="hdr-r"><span class="dot wd"></span><span class="dot nd"></span>&nbsp;<span id="day">---</span>&nbsp;<span id="date">--/--/----</span>&nbsp;<span id="clk">--:--:--</span></div>
 </header>
 <main>
 <p class="ptitle">Relay Controls &amp; Schedules</p>
@@ -1295,6 +1295,10 @@ function tick(){
     if(!d || typeof d !== 'object' || Array.isArray(d)) return;
     const clkEl = document.getElementById('clk');
     if(clkEl) clkEl.textContent = d.time || '--:--:--';
+    const dayEl = document.getElementById('day');
+    if(dayEl) dayEl.textContent = d.day || '---';
+    const dateEl = document.getElementById('date');
+    if(dateEl) dateEl.textContent = d.date || '--/--/----';
     const w = document.querySelector('.wd');
     const n = document.querySelector('.nd');
     if(w) w.className = 'dot wd ' + (d.wifi ? 'g' : 'r');
@@ -1324,7 +1328,7 @@ const char wifi_html[] PROGMEM = R"raw(<!DOCTYPE html>
 <a href="/pins">Pins</a>
 <a href="/system">System</a>
 </nav>
-<div class="hdr-r"><span class="dot wd"></span><span class="dot nd"></span>&nbsp;<span id="clk">--:--:--</span></div>
+<div class="hdr-r"><span class="dot wd"></span><span class="dot nd"></span>&nbsp;<span id="day">---</span>&nbsp;<span id="date">--/--/----</span>&nbsp;<span id="clk">--:--:--</span></div>
 </header>
 <main>
 <p class="ptitle">WiFi Station Settings</p>
@@ -1362,7 +1366,7 @@ Turn off to use Access Point mode only. Relay schedules and AP remain active.
 <script>
 function togglePw(id,btn){const el=document.getElementById(id);if(!el)return;el.type=el.type==='password'?'text':'password';btn.textContent=el.type==='password'?'\uD83D\uDC41':'\uD83D\uDE48';}
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
-function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
+function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';var _de=document.getElementById('day');if(_de)_de.textContent=d.day||'---';var _dte=document.getElementById('date');if(_dte)_dte.textContent=d.date||'--/--/----';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
 
 function escapeHtml(text) {
@@ -1552,7 +1556,7 @@ const char ntp_html[] PROGMEM = R"raw(<!DOCTYPE html>
 <a href="/pins">Pins</a>
 <a href="/system">System</a>
 </nav>
-<div class="hdr-r"><span class="dot wd"></span><span class="dot nd"></span>&nbsp;<span id="clk">--:--:--</span></div>
+<div class="hdr-r"><span class="dot wd"></span><span class="dot nd"></span>&nbsp;<span id="day">---</span>&nbsp;<span id="date">--/--/----</span>&nbsp;<span id="clk">--:--:--</span></div>
 </header>
 <main>
 <p class="ptitle">Time &amp; NTP Settings</p>
@@ -1575,7 +1579,7 @@ const char ntp_html[] PROGMEM = R"raw(<!DOCTYPE html>
 <div id="toast"></div>
 <script>
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
-function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
+function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';var _de=document.getElementById('day');if(_de)_de.textContent=d.day||'---';var _dte=document.getElementById('date');if(_dte)_dte.textContent=d.date||'--/--/----';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
 fetch('/api/ntp').then(r=>r.json()).then(d=>{
   document.getElementById('srv').value=d.ntpServer||'time.google.com';
@@ -1616,6 +1620,8 @@ function syncFromBrowser(){
       setTimeout(() => {
         fetch('/api/time').then(r=>r.json()).then(d=>{
           document.getElementById('clk').textContent=d.time||'--:--:--';
+          var _de=document.getElementById('day');if(_de)_de.textContent=d.day||'---';
+          var _dte=document.getElementById('date');if(_dte)_dte.textContent=d.date||'--/--/----';
         });
       }, 500);
     }else toast('Browser sync failed: '+(d.error||'unknown'),false);
@@ -1636,7 +1642,7 @@ const char ap_html[] PROGMEM = R"raw(<!DOCTYPE html>
 <a href="/pins">Pins</a>
 <a href="/system">System</a>
 </nav>
-<div class="hdr-r"><span class="dot wd"></span><span class="dot nd"></span>&nbsp;<span id="clk">--:--:--</span></div>
+<div class="hdr-r"><span class="dot wd"></span><span class="dot nd"></span>&nbsp;<span id="day">---</span>&nbsp;<span id="date">--/--/----</span>&nbsp;<span id="clk">--:--:--</span></div>
 </header>
 <main>
 <p class="ptitle">Access Point Settings</p>
@@ -1675,7 +1681,7 @@ const char ap_html[] PROGMEM = R"raw(<!DOCTYPE html>
 <script>
 function togglePw(id,btn){const el=document.getElementById(id);if(!el)return;el.type=el.type==='password'?'text':'password';btn.textContent=el.type==='password'?'\uD83D\uDC41':'\uD83D\uDE48';}
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
-function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
+function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';var _de=document.getElementById('day');if(_de)_de.textContent=d.day||'---';var _dte=document.getElementById('date');if(_dte)_dte.textContent=d.date||'--/--/----';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
 function refreshPwWarn(){
   const pwEl = document.getElementById('pw');
@@ -1731,7 +1737,7 @@ const char pins_html[] PROGMEM = R"raw(<!DOCTYPE html>
 <a href="/pins" class="cur">Pins</a>
 <a href="/system">System</a>
 </nav>
-<div class="hdr-r"><span class="dot wd"></span><span class="dot nd"></span>&nbsp;<span id="clk">--:--:--</span></div>
+<div class="hdr-r"><span class="dot wd"></span><span class="dot nd"></span>&nbsp;<span id="day">---</span>&nbsp;<span id="date">--/--/----</span>&nbsp;<span id="clk">--:--:--</span></div>
 </header>
 <main>
 <p class="ptitle">GPIO Pin Configuration</p>
@@ -1777,7 +1783,7 @@ const allValidPins = [16, 14, 12, 13, 3, 1];
 const pinNames={16:'D0',14:'D5',12:'D6',13:'D7',3:'RX',1:'TX'};
 
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
-function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
+function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';var _de=document.getElementById('day');if(_de)_de.textContent=d.day||'---';var _dte=document.getElementById('date');if(_dte)_dte.textContent=d.date||'--/--/----';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
 
 function escapeHtml(s){
@@ -2041,7 +2047,7 @@ const char system_html[] PROGMEM = R"raw(<!DOCTYPE html>
 <a href="/pins">Pins</a>
 <a href="/system" class="cur">System</a>
 </nav>
-<div class="hdr-r"><span class="dot wd"></span><span class="dot nd"></span>&nbsp;<span id="clk">--:--:--</span></div>
+<div class="hdr-r"><span class="dot wd"></span><span class="dot nd"></span>&nbsp;<span id="day">---</span>&nbsp;<span id="date">--/--/----</span>&nbsp;<span id="clk">--:--:--</span></div>
 </header>
 <main>
 <p class="ptitle">System Information &amp; Settings</p>
@@ -2081,7 +2087,7 @@ const char system_html[] PROGMEM = R"raw(<!DOCTYPE html>
 <div id="toast"></div>
 <script>
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
-function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
+function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';var _de=document.getElementById('day');if(_de)_de.textContent=d.day||'---';var _dte=document.getElementById('date');if(_dte)_dte.textContent=d.date||'--/--/----';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
 function fmtUp(s){
   if(s === undefined || s === null || !isFinite(s) || s < 0) s = 0;
@@ -3974,6 +3980,8 @@ void handleGetTime() {
         return;
     }    
     String ts = "--:--:--";
+    String dayStr = "---";
+    String dateStr = "--/--/----";
     epoch64_t ep = getCurrentEpoch();    
     if (epoch64IsValid(ep)) {
         epoch64_t localEp = ep + (epoch64_t)sysConfig.gmt_offset
@@ -3984,6 +3992,14 @@ void handleGetTime() {
             snprintf(buf, sizeof(buf), "%02d:%02d:%02d",
                      t.tm_hour, t.tm_min, t.tm_sec);
             ts = buf;
+            static const char* DAY_NAMES[7] = {
+                "SUN","MON","TUE","WED","THU","FRI","SAT"
+            };
+            if (t.tm_wday >= 0 && t.tm_wday < 7) dayStr = DAY_NAMES[t.tm_wday];
+            char dbuf[16];
+            snprintf(dbuf, sizeof(dbuf), "%02d/%02d/%04d",
+                     t.tm_mon + 1, t.tm_mday, t.tm_year + 1900);
+            dateStr = dbuf;
         }
     }    
     bool ntpSynced = (lastNTPSync > 0 || lastNTPSyncEpoch > 0 ||
@@ -4005,7 +4021,7 @@ void handleGetTime() {
         }
         if (oldestAge < 172800000UL) ntpFresh = true;
     }
-    server.send(200, "application/json", "{\"time\":\"" + ts + "\",\"wifi\":" + String(wifiConnected ? "true" : "false") + ",\"ntp\":" + String(ntpFresh ? "true" : "false") + "}");
+    server.send(200, "application/json", "{\"time\":\"" + ts + "\",\"day\":\"" + dayStr + "\",\"date\":\"" + dateStr + "\",\"wifi\":" + String(wifiConnected ? "true" : "false") + ",\"ntp\":" + String(ntpFresh ? "true" : "false") + "}");
 }
 void handleBrowserTimeSync() {
     if (!checkApiRateLimit()) {
