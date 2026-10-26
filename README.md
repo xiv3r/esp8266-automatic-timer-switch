@@ -57,3 +57,6 @@ SDA → D2
 VCC → 3.3V
 GND → GND
 ```
+
+<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/pic2.jpg">
+<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/esp8266.jpg">
