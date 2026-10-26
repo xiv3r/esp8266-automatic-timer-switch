@@ -293,15 +293,6 @@ struct SystemConfig {
     uint32_t last_rtc_epoch_hi;
     uint8_t  reserved[22];
 };
-static inline epoch64_t sysConfigGetLastRtcEpoch() {
-    return (epoch64_t)(((uint64_t)sysConfig.last_rtc_epoch_hi << 32) |
-                       (uint64_t)sysConfig.last_rtc_epoch_lo);
-}
-static inline void sysConfigSetLastRtcEpoch(epoch64_t v) {
-    uint64_t u = (uint64_t)v;
-    sysConfig.last_rtc_epoch_lo = (uint32_t)(u & 0xFFFFFFFFu);
-    sysConfig.last_rtc_epoch_hi = (uint32_t)(u >> 32);
-}
 struct ExtConfig {
     uint8_t magic;
     uint8_t ap_channel;
@@ -378,6 +369,19 @@ unsigned long pendingWiFiReconnectAt = 0;
 bool pendingAPRestart = false;
 unsigned long pendingAPRestartAt = 0;
 bool wifiStationEnabled = true;
+
+// =============================================================================
+//  sysConfig epoch helpers
+// =============================================================================
+static inline epoch64_t sysConfigGetLastRtcEpoch() {
+    return (epoch64_t)(((uint64_t)sysConfig.last_rtc_epoch_hi << 32) |
+                       (uint64_t)sysConfig.last_rtc_epoch_lo);
+}
+static inline void sysConfigSetLastRtcEpoch(epoch64_t v) {
+    uint64_t u = (uint64_t)v;
+    sysConfig.last_rtc_epoch_lo = (uint32_t)(u & 0xFFFFFFFFu);
+    sysConfig.last_rtc_epoch_hi = (uint32_t)(u >> 32);
+}
 
 // =============================================================================
 //  Crystal calibration globals
