@@ -1,9 +1,9 @@
 # Requirements 
 - ESP8266 v1 12E 160MHZ NodeMCU / (wemos d1 mini)
 - 5v 1-6 Channel Relay
-- Dupont Wire
+- 8 Female to Female Dupont Wire
 - DS3231 RTC Module
-- 5v 2-3a Power Supply
+- 5v 1-3a Power Supply
 
 # Arduino Libraries
 - ArduinoJson
@@ -20,10 +20,13 @@ firmware: 0x0
 
 # WiFi Key
 - WiFi SSID: `ESP8266_6CH_Timer_Switch`
-- Password: `ESP8266-admin`
+- Password: `12345678`
 
 # Activation
-- Go to `192.168.4.1 -> wifi` and connect to your home wifi after the NTP is synchronized everything will work
+> online
+- Go to `192.168.4.1 -> wifi` and connect to your home wifi after the NTP synchronized rtc time everything will work
+> offline
+- Go to `192.168.4.1 -> time` tap sync browser to set the rtc time
 
 # Relay Name
 - Double click relay name to edit
@@ -34,8 +37,7 @@ firmware: 0x0
 - Captive Portal: Auto redirect
 - Gateway:`192.168.4.1`
 - WAN:`192.168.1.123`
-  
-° Global:`Enable esp8266 Port Forwarding on your router to access anywhere`
+- Global:`Enable esp8266 Port Forwarding on your router to access anywhere`
 
 # GPIO Connection 
 ```
