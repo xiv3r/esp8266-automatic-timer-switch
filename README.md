@@ -29,7 +29,7 @@ firmware: 0x0
 
 # Relay Name
 - Double tap relay name to edit
-- 
+  
 # Access
 ° Direct Access
 - mDNS:`esp8266-relay.local`
