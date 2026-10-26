@@ -20,6 +20,69 @@
 #include <math.h>
 
 // =============================================================================
+//  64-bit epoch helpers
+// =============================================================================
+typedef int64_t epoch64_t;
+static const epoch64_t EPOCH64_MIN_VALID = 1000000000LL;
+static const epoch64_t EPOCH64_APP_MIN   = 1577836800LL;
+static const epoch64_t EPOCH64_APP_MAX   = 4102444799LL;
+static const epoch64_t EPOCH64_RTC_MIN   = 1700000000LL;
+static const epoch64_t EPOCH64_NTP_MAX   = 4102444800LL;
+static inline bool epoch64IsValid(epoch64_t v) {
+    return (v >= EPOCH64_MIN_VALID && v <= EPOCH64_APP_MAX);
+}
+struct tm64 {
+    int tm_sec;
+    int tm_min;
+    int tm_hour;
+    int tm_mday;
+    int tm_mon;
+    int tm_year;
+    int tm_wday;
+    int tm_yday;
+};
+static inline int64_t epoch64FloorDiv(int64_t a, int64_t b) {
+    int64_t q = a / b;
+    if ((a % b != 0) && ((a < 0) != (b < 0))) q--;
+    return q;
+}
+static inline int epoch64FloorMod(int64_t a, int64_t b) {
+    int64_t r = a % b;
+    if (r != 0 && ((r < 0) != (b < 0))) r += b;
+    return (int)r;
+}
+static inline bool epoch64ToTmUtc(epoch64_t epoch, struct tm64* out) {
+    if (!out) return false;
+    int64_t secs = (int64_t)epoch;
+    int64_t days = epoch64FloorDiv(secs, 86400LL);
+    int64_t rem  = secs - days * 86400LL;
+    out->tm_hour = (int)(rem / 3600); rem %= 3600;
+    out->tm_min  = (int)(rem / 60);
+    out->tm_sec  = (int)(rem % 60);
+    int64_t z   = days + 719468LL;
+    int64_t era = (z >= 0 ? z : z - 146096LL) / 146097LL;
+    int64_t doe = z - era * 146097LL;
+    int64_t yoe = (doe - doe / 1460LL + doe / 36524LL - doe / 146096LL) / 365LL;
+    int64_t y   = yoe + era * 400LL;
+    int64_t doy = doe - (365LL * yoe + yoe / 4LL - yoe / 100LL);
+    int64_t mp  = (5LL * doy + 2LL) / 153LL;
+    int64_t d   = doy - (153LL * mp + 2LL) / 5LL + 1LL;
+    int64_t m   = mp + (mp < 10LL ? 3LL : -9LL);
+    if (m <= 2LL) y++;
+    out->tm_year = (int)(y - 1900LL);
+    out->tm_mon  = (int)(m - 1LL);
+    out->tm_mday = (int)d;
+    out->tm_wday = epoch64FloorMod(days + 4LL, 7LL);
+    static const int mdays[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    int yday = out->tm_mday - 1;
+    for (int i = 0; i < out->tm_mon; i++) yday += mdays[i];
+    bool leap = ((y % 4LL == 0) && (y % 100LL != 0)) || (y % 400LL == 0);
+    if (leap && out->tm_mon > 1) yday += 1;
+    out->tm_yday = yday;
+    return true;
+}
+
+// =============================================================================
 //  LittleFS
 // =============================================================================
 #define CONFIG_FILE    "/system.cfg"
@@ -157,7 +220,7 @@ NTPClient timeClient(ntpUDP, NTP_SERVERS[0], 28800, 3600000UL);
 RTC_DS3231 rtc;
 bool ds3231Present = false;
 unsigned long lastDS3231Sync = 0;
-time_t lastDS3231SyncEpoch = 0;
+epoch64_t lastDS3231SyncEpoch = 0;
 
 // =============================================================================
 //  Dynamic Relay
@@ -221,14 +284,24 @@ struct SystemConfig {
     char     ntp_server[48];
     long     gmt_offset;
     int      daylight_offset;
-    time_t   last_rtc_epoch;
+    uint32_t last_rtc_epoch_lo;
     float    rtc_drift;
     char     hostname[32];
     float    crystal_ppm;
     bool     crystal_calibrated;
     bool     wifi_station_enabled;
-    uint8_t  reserved[26];
+    uint32_t last_rtc_epoch_hi;
+    uint8_t  reserved[22];
 };
+static inline epoch64_t sysConfigGetLastRtcEpoch() {
+    return (epoch64_t)(((uint64_t)sysConfig.last_rtc_epoch_hi << 32) |
+                       (uint64_t)sysConfig.last_rtc_epoch_lo);
+}
+static inline void sysConfigSetLastRtcEpoch(epoch64_t v) {
+    uint64_t u = (uint64_t)v;
+    sysConfig.last_rtc_epoch_lo = (uint32_t)(u & 0xFFFFFFFFu);
+    sysConfig.last_rtc_epoch_hi = (uint32_t)(u >> 32);
+}
 struct ExtConfig {
     uint8_t magic;
     uint8_t ap_channel;
@@ -250,7 +323,7 @@ SystemConfig sysConfig;
 ExtConfig    extConfig;
 PinConfig    pinConfig;
 RelayConfig  relayConfigs[MAX_RELAYS];
-time_t        internalEpoch            = 0;
+epoch64_t     internalEpoch            = 0;
 unsigned long internalMillisAtLastSync = 0;
 float         driftCompensation        = 1.0f;
 bool          rtcInitialized           = false;
@@ -258,7 +331,7 @@ uint8_t       ntpServerIndex  = 0;
 uint8_t       ntpFailCount    = 0;
 unsigned long lastNTPSync     = 0;
 unsigned long lastNTPAttempt  = 0;
-time_t        lastNTPSyncEpoch = 0;    
+epoch64_t     lastNTPSyncEpoch = 0;    
 bool          wifiConnected         = false;
 bool          mdnsStarted           = false;
 unsigned long lastWiFiCheck         = 0;
@@ -311,7 +384,7 @@ bool wifiStationEnabled = true;
 // =============================================================================
 float crystalDriftPPM = 0;
 bool crystalCalibrated = false;
-time_t lastBrowserSyncEpoch = 0;
+epoch64_t lastBrowserSyncEpoch = 0;
 unsigned long lastBrowserSyncMs = 0;
 
 // =============================================================================
@@ -364,10 +437,10 @@ inline bool checkFlashWriteRate() {
 // =============================================================================
 //  Prototypes
 // =============================================================================
-time_t getCurrentEpoch();
-void updateCrystalCalibration(time_t measuredEpoch, unsigned long measuredMs, time_t previousEpoch, unsigned long previousMs);
+epoch64_t getCurrentEpoch();
+void updateCrystalCalibration(epoch64_t measuredEpoch, unsigned long measuredMs, epoch64_t previousEpoch, unsigned long previousMs);
 void syncInternalRTC();
-void syncInternalRTCFromBrowser(time_t browserEpoch);
+void syncInternalRTCFromBrowser(epoch64_t browserEpoch);
 void loadRTCState();
 void saveRTCState();
 void loadConfiguration();
@@ -415,17 +488,13 @@ void checkWebServerHealth();
 void checkDNSHealth();
 void initDS3231();
 void syncFromDS3231();
-void syncToDS3231(time_t epoch);
+void syncToDS3231(epoch64_t epoch);
 void monitorHeapHealth();
 void checkWiFiStability();
 void emergencyHeapRecovery();
 void enableWiFiStation();
 void disableWiFiStation();
 void toggleWiFiStation();
-
-// =============================================================================
-//  Web server
-// =============================================================================
 void handleRoot();
 void handleWiFiPage();
 void handleNtpPage();
@@ -439,10 +508,6 @@ void handleSuccess();
 void handleConnectTest();
 void handleNcsi();
 void handleNotFound();
-
-// =============================================================================
-//  API
-// =============================================================================
 void handleGetRelays();
 void handleSaveRelayName();
 void handleManualControl();
@@ -501,8 +566,10 @@ main{max-width:1200px;margin:0 auto;padding:16px}
 .btn:hover{filter:brightness(1.1)}.btn:disabled{opacity:.5;cursor:default}
 .bon-b{background:#43A047;color:#fff}.boff-b{background:#E53935;color:#fff}.baut{background:#546E7A;color:#fff}
 .bsave{background:#1565C0;color:#fff;width:100%;padding:9px;font-size:13px;border-radius:6px;margin-top:8px}
+.bntp-action{flex:1 1 0;min-width:140px;margin-top:0;padding:9px 12px;border-radius:6px;font-size:13px;font-weight:600;white-space:nowrap;background:#1565C0;color:#fff}
 .bsync{background:#FB8C00;color:#fff}.bdanger{background:#B71C1C;color:#fff}.bwarn{background:#F9A825;color:#212121}
 .bscan{background:#0288D1;color:#fff}.bbrowser{background:#7B1FA2;color:#fff}
+.sys-action{flex:1 1 0;min-width:150px;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;white-space:nowrap;color:#fff}
 .badd{background:#43A047;color:#fff}.bremove{background:#E53935;color:#fff}
 .btoggle{background:#00897B;color:#fff;width:100%;padding:9px;font-size:13px;border-radius:6px;margin-top:8px}
 .slist{display:flex;flex-direction:column;gap:6px;margin-bottom:8px;max-height:500px;overflow-y:auto;padding-right:2px}
@@ -566,7 +633,7 @@ hr{border:none;border-top:1px solid #ECEFF1;margin:14px 0}
 .pin-chip.available{background:#E3F2FD;color:#1565C0;border-color:#90CAF9}
 .pin-chip.available:hover{background:#BBDEFB}
 .pin-chip.used{background:#E8E8E8;color:#90A4AE;border-color:#CFD8DC;cursor:default}
-#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:#323232;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;transition:transform .28s;z-index:999;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.3);min-width:180px;text-align:center}
+#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:#323232;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;transition:transform .28s;z-index:999;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.3);min-width:180px;max-width:calc(100vw - 32px);word-break:break-word;text-align:center}
 #toast.show{transform:translateX(-50%) translateY(0)}
 #toast.ok{background:#2E7D32}#toast.er{background:#C62828}
 .rtc-status{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700}
@@ -1077,6 +1144,35 @@ function uf(ri, si, field, val){
   if(nb) nb.innerHTML = nightBadge(sc);
 }
 
+function patchRelayBadge(ri){
+  if(!relays[ri]) return;
+  const nameEl = document.getElementById('name_' + ri);
+  if(!nameEl || !nameEl.parentNode) return;
+  const r = relays[ri];
+  const sl = r.manual ? (r.state ? 'MANUAL ON' : 'MANUAL OFF') : (r.state ? 'ON' : 'OFF');
+  const sc = r.manual ? (r.state ? 'bman-on' : 'bman-off') : (r.state ? 'bon' : 'boff');
+  const badge = nameEl.parentNode.querySelector('.badge');
+  if(badge){ badge.textContent = sl; badge.className = 'badge ' + sc; }
+}
+
+function refreshOneRelayState(ri){
+  if(busyCount > 0) return;
+  if(loadInFlight) return;
+  loadInFlight = true;
+  fetchWithTimeout('/api/relays', {}, 10000).then(r => r.ok ? r.json() : null).then(d => {
+    loadInFlight = false;
+    if(Array.isArray(d) && d[ri]){
+      relays[ri].state  = !!d[ri].state;
+      relays[ri].manual = !!d[ri].manual;
+      patchRelayBadge(ri);
+    }
+    if(busyCount === 0 && pendingLoad){ pendingLoad = false; load(); }
+  }).catch(() => {
+    loadInFlight = false;
+    if(busyCount === 0 && pendingLoad){ pendingLoad = false; load(); }
+  });
+}
+
 function mc(ri, state){
   if(!relays[ri]) return;
   fetchWithTimeout('/api/relay/manual', {
@@ -1085,8 +1181,10 @@ function mc(ri, state){
     body: JSON.stringify({relay: ri, state: !!state})
   }).then(r => r.json()).then(d => {
     if(d && d.success){
+      relays[ri].manual = true;
+      relays[ri].state  = !!state;
+      patchRelayBadge(ri);
       toast((relays[ri].name || ('Relay ' + (ri+1))) + ' ' + (state ? 'ON' : 'OFF'));
-      requestLoad(true);
     } else toast('Failed', false);
   }).catch(() => toast('Error', false));
 }
@@ -1099,8 +1197,10 @@ function ra(ri){
     body: JSON.stringify({relay: ri})
   }).then(r => r.json()).then(d => {
     if(d && d.success){
+      relays[ri].manual = false;
+      patchRelayBadge(ri);
+      refreshOneRelayState(ri);
       toast((relays[ri].name || ('Relay ' + (ri+1))) + ' \u2192 Auto');
-      requestLoad(true);
     } else toast('Failed', false);
   }).catch(() => toast('Error', false));
 }
@@ -1178,8 +1278,8 @@ function tick(){
     if(clkEl) clkEl.textContent = d.time || '--:--:--';
     const w = document.querySelector('.wd');
     const n = document.querySelector('.nd');
-    if(w) w.className = 'dot ' + (d.wifi ? 'g' : 'r');
-    if(n) n.className = 'dot ' + (d.ntp ? 'g' : 'y');
+    if(w) w.className = 'dot wd ' + (d.wifi ? 'g' : 'r');
+    if(n) n.className = 'dot nd ' + (d.ntp ? 'g' : 'y');
   }).catch(() => { tick._inflight = false; });
 }
 setInterval(tick, 1000);
@@ -1243,7 +1343,7 @@ Turn off to use Access Point mode only. Relay schedules and AP remain active.
 <script>
 function togglePw(id,btn){const el=document.getElementById(id);if(!el)return;el.type=el.type==='password'?'text':'password';btn.textContent=el.type==='password'?'\uD83D\uDC41':'\uD83D\uDE48';}
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
-function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot '+(d.wifi?'g':'r');if(n)n.className='dot '+(d.ntp?'g':'y');}).catch(()=>{});}
+function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
 
 function escapeHtml(text) {
@@ -1423,16 +1523,16 @@ const char ntp_html[] PROGMEM = R"raw(<!DOCTYPE html>
 <div class="fg"><label>Daylight Saving</label><input type="number" id="dst" value="0"></div>
 <div class="fg"><label>Auto Sync (hours, 1&ndash;24)</label><input type="number" id="shi" min="1" max="24" value="1"></div>
 <div style="display:flex;gap:8px;flex-wrap:wrap">
-<button class="btn bsave" style="flex:1;margin-top:0" onclick="save()">&#x1F4BE; Save Settings</button>
-<button class="btn bsync" id="sbtn" onclick="sync()" style="padding:9px 16px;border-radius:6px;font-size:13px;font-weight:600;margin-top:8px;white-space:nowrap">&#x1F504; Sync NTP</button>
-<button class="btn bbrowser" id="bbtn" onclick="syncFromBrowser()" style="padding:9px 16px;border-radius:6px;font-size:13px;font-weight:600;margin-top:8px;white-space:nowrap">&#x1F310; Sync Browser</button>
+<button class="btn bntp-action" onclick="save()">&#x1F4BE; Save Settings</button>
+<button class="btn bntp-action" id="sbtn" onclick="sync()">&#x1F504; Sync NTP</button>
+<button class="btn bntp-action" id="bbtn" onclick="syncFromBrowser()">&#x1F310; Sync Browser</button>
 </div>
 </div>
 </main>
 <div id="toast"></div>
 <script>
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
-function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot '+(d.wifi?'g':'r');if(n)n.className='dot '+(d.ntp?'g':'y');}).catch(()=>{});}
+function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
 fetch('/api/ntp').then(r=>r.json()).then(d=>{
   document.getElementById('srv').value=d.ntpServer||'time.google.com';
@@ -1454,16 +1554,17 @@ function save(){
 function sync(){
   const b=document.getElementById('sbtn');b.disabled=true;b.textContent='Syncing\u2026';
   fetch('/api/ntp/sync',{method:'POST'}).then(r=>r.json()).then(d=>{
-    b.disabled=false;b.innerHTML='&#x1F504; Sync Now';
-    if(d.success)toast('Time synced successfully!');else toast('Sync failed \u2014 check WiFi',false);
-  }).catch(()=>{b.disabled=false;b.innerHTML='&#x1F504; Sync Now';toast('Error',false);});
+    b.disabled=false;b.innerHTML='&#x1F504; Sync NTP';
+    if(d.success)toast('Sync requested \u2014 check clock in a few seconds');else toast('Sync failed \u2014 check WiFi',false);
+    setTimeout(tick, 2500);
+  }).catch(()=>{b.disabled=false;b.innerHTML='&#x1F504; Sync NTP';toast('Error',false);});
 }
 function syncFromBrowser(){
   const b=document.getElementById('bbtn');b.disabled=true;b.textContent='Syncing\u2026';
   const epoch=Math.floor(Date.now()/1000);
   fetch('/api/time/browser-sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({epoch:epoch})})
   .then(r=>r.json()).then(d=>{
-    b.disabled=false;b.innerHTML='&#x1F310; Sync from Browser';
+    b.disabled=false;b.innerHTML='&#x1F310; Sync Browser';
     if(d.success){
       toast('Time synced from browser successfully!');
       tick();
@@ -1529,12 +1630,14 @@ const char ap_html[] PROGMEM = R"raw(<!DOCTYPE html>
 <script>
 function togglePw(id,btn){const el=document.getElementById(id);if(!el)return;el.type=el.type==='password'?'text':'password';btn.textContent=el.type==='password'?'\uD83D\uDC41':'\uD83D\uDE48';}
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
-function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot '+(d.wifi?'g':'r');if(n)n.className='dot '+(d.ntp?'g':'y');}).catch(()=>{});}
+function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
 fetch('/api/ap').then(r=>r.json()).then(d=>{
   document.getElementById('ssid').value=d.ap_ssid||'';
   document.getElementById('ch').value=d.ap_channel||6;
   document.getElementById('hidden').value=d.ap_hidden?'1':'0';
+  var hasPw = (d.hasPassword === true) || (typeof d.ap_password === 'string' && d.ap_password.length > 0);
+  document.getElementById('pwWarn').style.display = hasPw ? 'none' : '';
 }).catch(()=>{});
 document.getElementById('pw').addEventListener('input',function(){
   document.getElementById('pwWarn').style.display = (this.value.length === 0) ? '' : 'none';
@@ -1612,7 +1715,7 @@ const allValidPins = [16, 14, 12, 13, 3, 1];
 const pinNames={16:'D0',14:'D5',12:'D6',13:'D7',3:'RX',1:'TX'};
 
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
-function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot '+(d.wifi?'g':'r');if(n)n.className='dot '+(d.ntp?'g':'y');}).catch(()=>{});}
+function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
 
 function pn(p){return pinNames[p]||('GPIO'+p);}
@@ -1642,7 +1745,7 @@ function applyGlobalLogicToAll() {
         }
         pinCfg.globalActiveLow = newGlobalValue;
         render();
-        toast('Applied to all relays');
+        toast('Applied in form \u2014 click Save & Apply to persist');
     } else {
         document.getElementById('globalActiveLow').value = pinCfg.globalActiveLow ? '1' : '0';
     }
@@ -1828,9 +1931,9 @@ const char system_html[] PROGMEM = R"raw(<!DOCTYPE html>
 
 <div class="card fcrd">
 <p style="font-weight:700;margin-bottom:12px">Device Control</p>
-<div style="display:flex;gap:8px;flex-wrap:wrap">
-<button class="btn bwarn" onclick="rst()" style="padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600">&#x1F504; Reconnect WiFi</button>
-<button class="btn bdanger" onclick="fct()" style="padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600">&#x26A0; Factory Reset</button>
+<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+<button class="btn bwarn sys-action" onclick="rst()">&#x1F504; Reconnect WiFi</button>
+<button class="btn bdanger sys-action" onclick="fct()">&#x26A0; Factory Reset</button>
 </div>
 <p style="color:#90A4AE;font-size:12px;margin-top:10px">Factory reset clears all settings. Alternatively hold the FLASH button for 5 seconds.</p>
 </div>
@@ -1838,7 +1941,7 @@ const char system_html[] PROGMEM = R"raw(<!DOCTYPE html>
 <div id="toast"></div>
 <script>
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
-function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot '+(d.wifi?'g':'r');if(n)n.className='dot '+(d.ntp?'g':'y');}).catch(()=>{});}
+function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
 function fmtUp(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;return h+'h '+m+'m '+ss+'s';}
 function rssiDesc(r){if(!r)return'\u2014';return r+'dBm ('+( r>=-50?'Excellent':r>=-60?'Good':r>=-70?'Fair':'Weak')+')';}
@@ -1910,13 +2013,25 @@ void syncFromDS3231() {
     if (!ds3231Present) return;    
     DateTime now = rtc.now();
     if (now.year() < 2024 || now.year() > 2099) return;    
-    time_t ds3231Epoch = now.unixtime();    
-    if (ds3231Epoch < 1700000000UL || ds3231Epoch > 4100000000UL) return;    
+    uint32_t rtcRaw = now.unixtime();
+    epoch64_t ds3231Epoch = (epoch64_t)rtcRaw;    
+    if (ds3231Epoch < EPOCH64_RTC_MIN || ds3231Epoch > EPOCH64_NTP_MAX) return;    
     unsigned long nowMs = millis();    
-    if (rtcInitialized && internalEpoch > 0 && 
-        elapsedSince(internalMillisAtLastSync) < MAX_DRIFT_CALIBRATION_INTERVAL) {        
+    if (rtcInitialized && internalEpoch > 0) {
+        epoch64_t internalNow = getCurrentEpoch();
+        int64_t delta = (int64_t)(ds3231Epoch - internalNow);
+        int64_t backwardLimit = (int64_t)(extConfig.ntp_sync_hours * 3600) * 4LL;
+        if (backwardLimit < 7200LL) backwardLimit = 7200LL;
+        bool reject = false;
+        if (delta < -backwardLimit) reject = true;
+        else if (delta > 86400LL) reject = true;
+        if (reject) {
+            lastDS3231SyncEpoch = ds3231Epoch;
+            lastDS3231Sync = nowMs;
+            return;
+        }
         unsigned long elapsedMs = elapsedSince(internalMillisAtLastSync);
-        if (elapsedMs > 60000UL) {
+        if (elapsedMs > 60000UL && elapsedMs < MAX_DRIFT_CALIBRATION_INTERVAL) {
             updateCrystalCalibration(ds3231Epoch, nowMs, internalEpoch, internalMillisAtLastSync);
         }
     }    
@@ -1926,25 +2041,30 @@ void syncFromDS3231() {
     lastDS3231SyncEpoch = ds3231Epoch;
     lastDS3231Sync = nowMs;
 }
-void syncToDS3231(time_t epoch) {
-    if (!ds3231Present || epoch < 1577836800UL) return;    
-    rtc.adjust(DateTime(epoch));
+void syncToDS3231(epoch64_t epoch) {
+    if (!ds3231Present) return;
+    if (epoch < EPOCH64_APP_MIN || epoch > EPOCH64_APP_MAX) return;
+    uint32_t clamped = (epoch > (epoch64_t)4102444800LL)
+        ? (uint32_t)4102444800UL
+        : (uint32_t)epoch;
+    rtc.adjust(DateTime(clamped));
 }
 
 // =============================================================================
 //  Enhanced Crystal Calibration
 // =============================================================================
-void updateCrystalCalibration(time_t measuredEpoch, unsigned long measuredMs, time_t previousEpoch, unsigned long previousMs) {
+void updateCrystalCalibration(epoch64_t measuredEpoch, unsigned long measuredMs, epoch64_t previousEpoch, unsigned long previousMs) {
     if (previousEpoch == 0 || previousMs == 0) return;    
     unsigned long elapsedMs = (measuredMs >= previousMs) ? 
         (measuredMs - previousMs) : (0xFFFFFFFFUL - previousMs) + measuredMs + 1UL;    
-    if (elapsedMs < CRYSTAL_CALIBRATION_MIN_INTERVAL) return;    
-    time_t expectedElapsed = (time_t)(elapsedMs / 1000);
-    time_t actualElapsed = measuredEpoch - previousEpoch;    
+    if (elapsedMs + 1000UL < CRYSTAL_CALIBRATION_MIN_INTERVAL) return;    
+    int64_t expectedElapsed = (int64_t)(elapsedMs / 1000UL);
+    int64_t actualElapsed   = (int64_t)(measuredEpoch - previousEpoch);    
     if (actualElapsed <= 0 || expectedElapsed <= 0) return;
-    long diffElapsed = (long)(actualElapsed - expectedElapsed);
-    if (labs(diffElapsed) > (long)(expectedElapsed / 10)) return;    
-    double actualSeconds = (double)actualElapsed;
+    int64_t diffElapsed = actualElapsed - expectedElapsed;
+    if (diffElapsed < 0) diffElapsed = -diffElapsed;
+    if (diffElapsed > (expectedElapsed / 10LL)) return;    
+    double actualSeconds   = (double)actualElapsed;
     double expectedSeconds = (double)expectedElapsed;
     double measuredRate = actualSeconds / expectedSeconds;    
     if (measuredRate > 0.9 && measuredRate < 1.1) {
@@ -1965,8 +2085,8 @@ void updateCrystalCalibration(time_t measuredEpoch, unsigned long measuredMs, ti
             driftCompensation = driftCompensation * 0.95f + measuredRate * 0.05f;
         }
         ntpSyncCount = min(ntpSyncCount + 1, 1000);        
-        if (driftCompensation < 0.95f) driftCompensation = 0.95f;
-        if (driftCompensation > 1.05f) driftCompensation = 1.05f;
+        if (driftCompensation < 0.995f) driftCompensation = 0.995f;
+        if (driftCompensation > 1.005f) driftCompensation = 1.005f;
     }
 }
 
@@ -1990,7 +2110,6 @@ void enableWiFiStation() {
 }
 void disableWiFiStation() {
     if (!wifiStationEnabled) return;    
-    
     wifiStationEnabled = false;
     sysConfig.wifi_station_enabled = false;
     wifiConnected = false;
@@ -2012,7 +2131,6 @@ void disableWiFiStation() {
     
     markConfigDirty();
 }
-
 void toggleWiFiStation() {
     if (wifiStationEnabled) {
         disableWiFiStation();
@@ -2625,7 +2743,7 @@ void flushConfigIfNeeded() {
         lastConfigSave = millis();
     }
 }
-time_t getCurrentEpoch() {
+epoch64_t getCurrentEpoch() {
     if (!rtcInitialized || internalEpoch == 0) return 0;    
     unsigned long elapsed = elapsedSince(internalMillisAtLastSync);
     double elapsedSeconds;    
@@ -2635,14 +2753,18 @@ time_t getCurrentEpoch() {
     } else {
         elapsedSeconds = (double)elapsed * driftCompensation / 1000.0;
     }    
-    time_t result = internalEpoch + (time_t)elapsedSeconds;    
+    epoch64_t result = internalEpoch + (epoch64_t)elapsedSeconds;    
     return result;
 }
 void syncInternalRTC() {
-    time_t ntpEpoch = timeClient.getEpochTime();
-    if (ntpEpoch < 1000000000UL) return;
+    unsigned long ntpRaw = timeClient.getEpochTime();
+    epoch64_t ntpEpoch = (epoch64_t)ntpRaw;
+    if (ntpEpoch < EPOCH64_MIN_VALID) return;
     unsigned long nowMs = millis();    
     if (rtcInitialized && internalEpoch > 0) {
+        epoch64_t internalNow = getCurrentEpoch();
+        int64_t sanityDelta = (int64_t)(ntpEpoch - internalNow);
+        if (sanityDelta < -315360000LL || sanityDelta > 315360000LL) return;
         unsigned long elapsedMs = elapsedSince(internalMillisAtLastSync);
         if (elapsedMs > 60000UL && elapsedMs < MAX_DRIFT_CALIBRATION_INTERVAL) {
             updateCrystalCalibration(ntpEpoch, nowMs, internalEpoch, internalMillisAtLastSync);
@@ -2657,7 +2779,7 @@ void syncInternalRTC() {
     saveRTCState();
     syncToDS3231(ntpEpoch);
 }
-void syncInternalRTCFromBrowser(time_t browserEpoch) {
+void syncInternalRTCFromBrowser(epoch64_t browserEpoch) {
     unsigned long nowMs = millis();    
     if (rtcInitialized && internalEpoch > 0) {
         unsigned long elapsedMs = elapsedSince(internalMillisAtLastSync);
@@ -2678,7 +2800,7 @@ void syncInternalRTCFromBrowser(time_t browserEpoch) {
     syncToDS3231(browserEpoch);
 }
 void saveRTCState() {
-    sysConfig.last_rtc_epoch = internalEpoch;
+    sysConfigSetLastRtcEpoch(internalEpoch);
     sysConfig.rtc_drift = driftCompensation;
     sysConfig.crystal_ppm = crystalDriftPPM;
     sysConfig.crystal_calibrated = crystalCalibrated;
@@ -2686,7 +2808,7 @@ void saveRTCState() {
     markConfigDirty();
 }
 void loadRTCState() {
-    if (sysConfig.rtc_drift >= 0.95f && sysConfig.rtc_drift <= 1.05f) {
+    if (sysConfig.rtc_drift >= 0.99f && sysConfig.rtc_drift <= 1.01f) {
         driftCompensation = sysConfig.rtc_drift;
     } else {
         driftCompensation = 1.0f;
@@ -2707,10 +2829,13 @@ void loadRTCState() {
     } else {
         wifiStationEnabled = true;
     }
-    if (!rtcInitialized && sysConfig.last_rtc_epoch > 1000000000UL) {
-        internalEpoch = sysConfig.last_rtc_epoch;
-        internalMillisAtLastSync = millis();
-        rtcInitialized = true;
+    if (!rtcInitialized) {
+        epoch64_t saved = sysConfigGetLastRtcEpoch();
+        if (saved > EPOCH64_MIN_VALID && saved < EPOCH64_APP_MAX) {
+            internalEpoch = saved;
+            internalMillisAtLastSync = millis();
+            rtcInitialized = true;
+        }
     }
 }
 void startMDNS() {
@@ -2867,7 +2992,7 @@ void initDefaults() {
     strcpy(sysConfig.ntp_server, "time.google.com");
     sysConfig.gmt_offset = 28800;
     sysConfig.daylight_offset = 0;
-    sysConfig.last_rtc_epoch = 0;
+    sysConfigSetLastRtcEpoch(0);
     sysConfig.rtc_drift = 1.0f;
     strcpy(sysConfig.hostname, "esp8266relay");
     sysConfig.crystal_ppm = 0;
@@ -2936,15 +3061,28 @@ void loadConfiguration() {
     {
         static const uint8_t VALID_PINS[] = {16, 14, 12, 13, 3, 1};
         static const uint8_t NUM_VALID_PINS = 6;
+        bool used[NUM_VALID_PINS];
+        memset(used, 0, sizeof(used));
         for (int i = 0; i < MAX_RELAYS; i++) {
-            bool valid = false;
+            int idx = -1;
             for (uint8_t k = 0; k < NUM_VALID_PINS; k++) {
-                if (relayConfigs[i].pin == VALID_PINS[k]) { valid = true; break; }
+                if (relayConfigs[i].pin == VALID_PINS[k]) { idx = k; break; }
             }
-            if (!valid) {
-                relayConfigs[i].pin = VALID_PINS[i % NUM_VALID_PINS];
+            bool needsRepair = (idx < 0) || used[idx];
+            if (needsRepair) {
+                idx = -1;
+                for (uint8_t k = 0; k < NUM_VALID_PINS; k++) {
+                    if (!used[k]) { idx = k; break; }
+                }
+                if (idx < 0) {
+                    relayConfigs[i].pin = 0xFF;
+                    relayConfigs[i].activeLow = true;
+                    continue;
+                }
+                relayConfigs[i].pin = VALID_PINS[idx];
                 relayConfigs[i].activeLow = true;
             }
+            used[idx] = true;
         }
     }
     
@@ -3143,8 +3281,8 @@ void loop() {
         selfRecoveryState = SR_MEMORY_CLEANUP;
     }    
     if (rtcInitialized) {
-        time_t currentEpoch = getCurrentEpoch();
-        if ((currentEpoch < 1000000000L) || ((uint32_t)currentEpoch > 4102444800u)) {
+        epoch64_t currentEpoch = getCurrentEpoch();
+        if (currentEpoch < EPOCH64_MIN_VALID || currentEpoch > EPOCH64_APP_MAX) {
             selfRecoveryState = SR_RTC_RECOVER;
         }
     }    
@@ -3200,21 +3338,27 @@ void loop() {
     }
     if (wifiConnected && wifiStationEnabled && ESP.getFreeHeap() > MIN_HEAP_FOR_NTP && ntpState == NTP_IDLE) {
         bool doSync = false;
-        time_t currentEpoch = getCurrentEpoch();        
+        epoch64_t currentEpoch = getCurrentEpoch();        
         if (lastNTPSyncEpoch == 0 && lastNTPSync == 0) {
             if (elapsedSince(lastNTPAttempt) >= NTP_RETRY_INTERVAL) {
                 doSync = true;
             }
         } else if (lastNTPSyncEpoch > 0 && currentEpoch > 0) {
-            if (currentEpoch - lastNTPSyncEpoch >= (time_t)(extConfig.ntp_sync_hours * 3600)) {
+            if (currentEpoch < lastNTPSyncEpoch) {
+                if ((lastNTPSyncEpoch - currentEpoch) > 60LL &&
+                    elapsedSince(lastNTPAttempt) >= NTP_RETRY_INTERVAL) {
+                    doSync = true;
+                }
+            } else if ((currentEpoch - lastNTPSyncEpoch) >= (epoch64_t)(extConfig.ntp_sync_hours * 3600) &&
+                       elapsedSince(lastNTPAttempt) >= NTP_RETRY_INTERVAL) {
                 doSync = true;
             }
         } else if (ntpFailCount > 0 && elapsedSince(lastNTPAttempt) >= NTP_RETRY_INTERVAL) {
             doSync = true;
         }       
-        if (!doSync && lastNTPSync > 0 && elapsedSince(lastNTPSync) > 86400000UL) {
+        if (!doSync && lastNTPSync > 0 && elapsedSince(lastNTPSync) > 86400000UL &&
+            elapsedSince(lastNTPAttempt) >= NTP_RETRY_INTERVAL) {
             doSync = true;
-            lastNTPSync = 0;
         }        
         if (doSync) {
             tryNTPSync();
@@ -3222,15 +3366,15 @@ void loop() {
     }
     if (wifiConnected && rtcInitialized && elapsedSince(lastTimeVerification) >= 3600000UL) {
         lastTimeVerification = now;
-        time_t currentEpoch = getCurrentEpoch();
-        if ((currentEpoch < 1000000000L) || ((uint32_t)currentEpoch > 4102444800u)) {
+        epoch64_t currentEpoch = getCurrentEpoch();
+        if (currentEpoch < EPOCH64_MIN_VALID || currentEpoch > EPOCH64_APP_MAX) {
             selfRecoveryState = SR_RTC_RECOVER;
         }
     }    
     if (rtcInitialized && elapsedSince(lastInternalTimeCheck) >= TIME_CHECK_INTERVAL) {
         lastInternalTimeCheck = now;
-        time_t currentEpoch = getCurrentEpoch();        
-        if ((currentEpoch < 1000000000L) || ((uint32_t)currentEpoch > 4102444800u)) {
+        epoch64_t currentEpoch = getCurrentEpoch();        
+        if (currentEpoch < EPOCH64_MIN_VALID || currentEpoch > EPOCH64_APP_MAX) {
             selfRecoveryState = SR_RTC_RECOVER;
         }
     }    
@@ -3263,8 +3407,8 @@ void loop() {
 void processRelaySchedules() {
     int safeNumRelays = (numRelays > MAX_RELAYS) ? MAX_RELAYS : numRelays;
     if (safeNumRelays < 1) safeNumRelays = 1;
-    time_t epoch = getCurrentEpoch();
-    if (epoch < 1000000000L || epoch > 4102444800L) {
+    epoch64_t epoch = getCurrentEpoch();
+    if (epoch < EPOCH64_MIN_VALID || epoch > EPOCH64_APP_MAX) {
         for (int i = 0; i < safeNumRelays; i++) {
             if (!relayConfigs[i].manualOverride) {
                 digitalWrite(relayConfigs[i].pin, 
@@ -3273,12 +3417,11 @@ void processRelaySchedules() {
         }
         return;
     }
-    time_t localEpoch = epoch + sysConfig.gmt_offset + sysConfig.daylight_offset;
-    struct tm tmBuf;
-    if (!gmtime_r(&localEpoch, &tmBuf)) return;
-
+    epoch64_t localEpoch = epoch + (epoch64_t)sysConfig.gmt_offset
+                                 + (epoch64_t)sysConfig.daylight_offset;
+    struct tm64 tmBuf;
+    if (!epoch64ToTmUtc(localEpoch, &tmBuf)) return;
     int curTotalSeconds = tmBuf.tm_hour * 3600 + tmBuf.tm_min * 60 + tmBuf.tm_sec;
-
     for (int i = 0; i < safeNumRelays; i++) {
         if (relayConfigs[i].manualOverride) {
             digitalWrite(relayConfigs[i].pin,
@@ -3286,19 +3429,15 @@ void processRelaySchedules() {
                                          :  relayConfigs[i].manualState);
             continue;
         }
-
         bool on = false;
-
         for (int s = 0; s < 8 && !on; s++) {
             if (!relayConfigs[i].schedule.enabled[s]) continue;
-
             int startSeconds = relayConfigs[i].schedule.startHour[s]   * 3600
                              + relayConfigs[i].schedule.startMinute[s]  *   60
                              + relayConfigs[i].schedule.startSecond[s];
             int stopSeconds  = relayConfigs[i].schedule.stopHour[s]    * 3600
                              + relayConfigs[i].schedule.stopMinute[s]   *   60
                              + relayConfigs[i].schedule.stopSecond[s];
-
             bool always    = (startSeconds == stopSeconds);
             bool overnight = (startSeconds >  stopSeconds);
             bool inTail    = overnight && (curTotalSeconds <  stopSeconds);
@@ -3306,30 +3445,23 @@ void processRelaySchedules() {
             bool inWindow  = (!overnight && !always)
                              && curTotalSeconds >= startSeconds
                              && curTotalSeconds <  stopSeconds;
-
             if (!always && !inTail && !inHead && !inWindow) continue;
-
-            struct tm refTm;
+            struct tm64 refTm;
             if (inTail) {
-                time_t refEpoch = localEpoch - 86400;
-                if (!gmtime_r(&refEpoch, &refTm)) continue;
+                epoch64_t refEpoch = localEpoch - 86400LL;
+                if (!epoch64ToTmUtc(refEpoch, &refTm)) continue;
             } else {
                 refTm = tmBuf;
             }
-
             uint8_t dayMask = relayConfigs[i].schedule.days[s];
             if (dayMask == 0) continue;
             if (!(dayMask & (1 << refTm.tm_wday))) continue;
-
             uint32_t mdMask = relayConfigs[i].schedule.monthDays[s];
             if (mdMask != 0 && !(mdMask & (1u << (refTm.tm_mday - 1)))) continue;
-
             uint16_t mMask = relayConfigs[i].schedule.monthMask[s];
             if (mMask != 0 && !(mMask & (1u << refTm.tm_mon))) continue;
-
             on = true;
         }
-
         digitalWrite(relayConfigs[i].pin,
             relayConfigs[i].activeLow ? !on : on);
     }
@@ -3633,13 +3765,15 @@ void handleGetTime() {
         return;
     }    
     String ts = "--:--:--";
-    time_t ep = getCurrentEpoch();    
-    if (ep > 1000000000UL) {
-        time_t localEp = ep + sysConfig.gmt_offset + sysConfig.daylight_offset;
-        struct tm* t = gmtime(&localEp);
-        if (t) {
-            char buf[10];
-            sprintf(buf, "%02d:%02d:%02d", t->tm_hour, t->tm_min, t->tm_sec);
+    epoch64_t ep = getCurrentEpoch();    
+    if (epoch64IsValid(ep)) {
+        epoch64_t localEp = ep + (epoch64_t)sysConfig.gmt_offset
+                               + (epoch64_t)sysConfig.daylight_offset;
+        struct tm64 t;
+        if (epoch64ToTmUtc(localEp, &t)) {
+            char buf[12];
+            snprintf(buf, sizeof(buf), "%02d:%02d:%02d",
+                     t.tm_hour, t.tm_min, t.tm_sec);
             ts = buf;
         }
     }    
@@ -3661,12 +3795,20 @@ void handleBrowserTimeSync() {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}"); 
         return; 
     }    
-    uint32_t browserEpoch = (uint32_t)(doc["epoch"] | 0u);
-    if (browserEpoch < 1000000000u || browserEpoch > 4102444800u) {
+    long long rawVal = doc["epoch"] | 0LL;
+    epoch64_t browserEpoch = (epoch64_t)rawVal;
+    if (browserEpoch < EPOCH64_MIN_VALID || browserEpoch > EPOCH64_APP_MAX) {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid timestamp\"}"); 
         return;
     }    
-    syncInternalRTCFromBrowser((time_t)browserEpoch);    
+    if (rtcInitialized && internalEpoch > 0) {
+        int64_t bsDelta = (int64_t)(browserEpoch - getCurrentEpoch());
+        if (bsDelta < -315360000LL || bsDelta > 315360000LL) {
+            server.send(400, "application/json", "{\"success\":false,\"error\":\"Timestamp too far from current\"}"); 
+            return;
+        }
+    }
+    syncInternalRTCFromBrowser(browserEpoch);    
     server.send(200, "application/json", "{\"success\":true}");
 }
 void handleGetWiFi() {
@@ -3705,8 +3847,12 @@ void handleSaveWiFi() {
     if (err) { server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}"); return; }
     const char* ssid = doc["ssid"];
     const char* pw = doc["password"];
-    if (!ssid || strlen(ssid) == 0 || strlen(ssid) > 31) {
-        server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid SSID\"}");
+    if (!ssid || strlen(ssid) == 0) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"SSID required\"}");
+        return;
+    }
+    if (strlen(ssid) > 31) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"SSID too long (max 31)\"}");
         return;
     }
     if (ssid && strlen(ssid) > 0 && strlen(ssid) < 32) {
@@ -3720,6 +3866,7 @@ void handleSaveWiFi() {
         else { sysConfig.sta_password[0] = '\0'; }
         bool saved = saveToFileAtomic(CONFIG_FILE, &sysConfig, sizeof(SystemConfig));
         bool savedRelay = saveToFileAtomic(RELAY_FILE, relayConfigs, sizeof(RelayConfig) * MAX_RELAYS);
+        if (saved && savedRelay) { configDirty = false; lastConfigSave = millis(); }
         if (!saved || !savedRelay) {
             strncpy(sysConfig.sta_ssid, oldSsid, 31); sysConfig.sta_ssid[31] = '\0';
             strncpy(sysConfig.sta_password, oldPw, 63); sysConfig.sta_password[63] = '\0';
@@ -3884,16 +4031,13 @@ void handleGetAP() {
         server.send(429, "application/json", "{\"error\":\"Too many requests\"}");
         return;
     }
-    String safeApSsid, safeApPw;
+    String safeApSsid;
     for (const char* p = sysConfig.ap_ssid; *p; ++p) {
         if (*p == '"' || *p == '\\') safeApSsid += '\\';
         safeApSsid += *p;
     }
-    for (const char* p = sysConfig.ap_password; *p; ++p) {
-        if (*p == '"' || *p == '\\') safeApPw += '\\';
-        safeApPw += *p;
-    }
-    server.send(200, "application/json", "{\"ap_ssid\":\"" + safeApSsid + "\",\"ap_password\":\"" + safeApPw + "\",\"ap_channel\":" + String(extConfig.ap_channel) + ",\"ap_hidden\":" + String(extConfig.ap_hidden ? "true" : "false") + "}");
+    bool hasPassword = (strlen(sysConfig.ap_password) > 0);
+    server.send(200, "application/json", "{\"ap_ssid\":\"" + safeApSsid + "\",\"ap_password\":\"\",\"hasPassword\":" + String(hasPassword ? "true" : "false") + ",\"ap_channel\":" + String(extConfig.ap_channel) + ",\"ap_hidden\":" + String(extConfig.ap_hidden ? "true" : "false") + "}");
 }
 void handleSaveAP() {
     if (!checkApiRateLimit()) {
@@ -4081,7 +4225,9 @@ void handleSavePins() {
     for (JsonObject r : relays) {
         if (idx >= MAX_RELAYS) break;
         relayConfigs[idx].pin = r["pin"];
-        relayConfigs[idx].activeLow = r["activeLow"];
+        relayConfigs[idx].activeLow = r.containsKey("activeLow")
+            ? (bool)r["activeLow"]
+            : pinConfig.globalActiveLow;
         if (r.containsKey("name")) {
             strncpy(relayConfigs[idx].name, r["name"], 15);
             relayConfigs[idx].name[15] = '\0';
@@ -4096,6 +4242,8 @@ void handleSavePins() {
         server.send(500, "application/json", "{\"success\":false,\"error\":\"Flash save failed\"}");
         return;
     }
+    configDirty = false;
+    lastConfigSave = millis();
     updateRelayPins();
     server.send(200, "application/json", "{\"success\":true}");
 }
