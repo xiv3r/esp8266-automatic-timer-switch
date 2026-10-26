@@ -3,6 +3,7 @@
 - 5v 1-6 Channel Relay
 - 8 Female to Female Dupont Wire
 - DS3231 RTC Module
+- CR2032 Battery
 - 5v 1-3a Power Supply
 
 # Arduino Libraries
@@ -11,9 +12,7 @@
 - [RTCLib](https://codeload.github.com/adafruit/RTClib/zip/refs/tags/1.14.1) 1.14.1
 
 # Installation
-- Download the firmware and flasher
-
-- Flash offset address 
+- Download the firmware and flash
 ```
 firmware: 0x0
 ```
@@ -38,6 +37,12 @@ firmware: 0x0
 - Gateway:`192.168.4.1`
 - WAN:`192.168.1.123`
 - Global:`Enable esp8266 Port Forwarding on your router to access anywhere`
+
+# Reset
+- Hold board boot button for 5 seconds to factory reset
+
+# Restart
+- Tap board RST button to restart
 
 # GPIO Connection 
 ```
