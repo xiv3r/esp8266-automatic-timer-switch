@@ -304,10 +304,6 @@ bool pendingWiFiReconnect = false;
 unsigned long pendingWiFiReconnectAt = 0;
 bool pendingAPRestart = false;
 unsigned long pendingAPRestartAt = 0;
-
-// =============================================================================
-//  WiFi Station Control
-// =============================================================================
 bool wifiStationEnabled = true;
 
 // =============================================================================
@@ -680,7 +676,6 @@ function clampUtf8Bytes(str, maxBytes){
   return out;
 }
 
-/* === time helpers === */
 function toTS(h,m,s){
   h = Math.min(23, Math.max(0, parseInt(h) || 0));
   m = Math.min(59, Math.max(0, parseInt(m) || 0));
@@ -696,7 +691,6 @@ function fromTS(v){
   };
 }
 
-/* === mask helpers — ESP8266 sentinel = 0 means "all" === */
 function dayMaskToStr(d){
   if(d === undefined || d === null) d = 0x7F;
   d = d & 0x7F;
@@ -755,7 +749,6 @@ function nightBadge(sc){
   return '<span class="night">&#x1F319; ' + info + '</span>';
 }
 
-/* === state === */
 const NS = 8;
 let relays = [];
 let loadInFlight = false;
@@ -810,7 +803,6 @@ function load(force){
   });
 }
 
-/* === name editing === */
 function startEditName(relayIdx){
   if(!relays[relayIdx] || typeof relays[relayIdx] !== 'object') return;
   if(editingRelay === relayIdx){
@@ -911,7 +903,6 @@ function saveNameEdit(relayIdx, newName){
   });
 }
 
-/* === render === */
 function render(){
   const g = document.getElementById('grid');
   if(!g) return;
@@ -995,7 +986,6 @@ function render(){
   });
 }
 
-/* === toggles (sentinel-aware for ESP8266: 0 = all) === */
 function toggleDay(ri, si, dayIdx){
   if(!relays[ri] || !Array.isArray(relays[ri].schedules)) return;
   let sc = relays[ri].schedules[si];
@@ -1087,7 +1077,6 @@ function uf(ri, si, field, val){
   if(nb) nb.innerHTML = nightBadge(sc);
 }
 
-/* === manual control === */
 function mc(ri, state){
   if(!relays[ri]) return;
   fetchWithTimeout('/api/relay/manual', {
@@ -1116,7 +1105,6 @@ function ra(ri){
   }).catch(() => toast('Error', false));
 }
 
-/* === save === */
 function save(ri){
   if(!relays[ri]) return;
   if(savingRelays[ri]) return;
@@ -1177,7 +1165,6 @@ function save(ri){
   });
 }
 
-/* === clock poll === */
 function tick(){
   if(tick._inflight) return;
   tick._inflight = true;
@@ -3163,9 +3150,6 @@ void loop() {
     }    
     proactiveMaintenance();
     gentleNetworkHealing();    
-    /* Software loop watchdog removed: ESP8266 hardware WDT via ESP.wdtFeed()
-       already covers hung-loop scenarios. Prior block was dead code because
-       lastSuccessfulLoop was unconditionally refreshed every iteration. */
     if (wcsState == WCS_PENDING) {
         if (WiFi.status() == WL_CONNECTED) {
             wcsState = WCS_IDLE;
@@ -3621,9 +3605,6 @@ void handleSaveRelay() {
                               : 0x7Fu;
         uint32_t newMDays = ((uint32_t)(sc["monthDays"] | 0)) & 0x7FFFFFFFUL;
         uint16_t newMMask = ((uint16_t)(sc["monthMask"] | 0)) & 0x0FFFu;
-        /* Normalize "explicitly all selected" back to the 0 sentinel so the
-           stored form is canonical and the scheduler's `!= 0` short-circuit
-           keeps working identically for both encodings. */
         if (newMDays == 0x7FFFFFFFUL) newMDays = 0;
         if (newMMask == 0x0FFFu)      newMMask = 0;
         relayConfigs[relay].schedule.days[s]      = newDays;
