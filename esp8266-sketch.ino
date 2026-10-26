@@ -368,6 +368,8 @@ bool pendingWiFiReconnect = false;
 unsigned long pendingWiFiReconnectAt = 0;
 bool pendingAPRestart = false;
 unsigned long pendingAPRestartAt = 0;
+bool pendingStationDisable = false;
+unsigned long pendingStationDisableAt = 0;
 bool wifiStationEnabled = true;
 
 // =============================================================================
@@ -394,12 +396,42 @@ unsigned long lastBrowserSyncMs = 0;
 // =============================================================================
 //  Multi-year reliability helpers
 // =============================================================================
+static unsigned long uptimeLastMillis = 0;
+static uint64_t      uptimeWraps      = 0;
+inline uint64_t getUptimeMs64() {
+    unsigned long now = millis();
+    if (now < uptimeLastMillis) {
+        uptimeWraps++;
+    }
+    uptimeLastMillis = now;
+    return ((uint64_t)uptimeWraps << 32) | (uint64_t)now;
+}
 inline unsigned long elapsedSince(unsigned long since) {
     unsigned long now = millis();
     if (now >= since) {
         return now - since;
     }
     return (0xFFFFFFFFUL - since) + now + 1UL;
+}
+inline void appendJsonEscaped(String& out, const char* s) {
+    if (!s) return;
+    static const char hexDigits[] = "0123456789ABCDEF";
+    for (const unsigned char* p = (const unsigned char*)s; *p; ++p) {
+        unsigned char c = *p;
+        if (c == '"')       { out += '\\'; out += '"'; }
+        else if (c == '\\') { out += '\\'; out += '\\'; }
+        else if (c == '\b') { out += '\\'; out += 'b'; }
+        else if (c == '\f') { out += '\\'; out += 'f'; }
+        else if (c == '\n') { out += '\\'; out += 'n'; }
+        else if (c == '\r') { out += '\\'; out += 'r'; }
+        else if (c == '\t') { out += '\\'; out += 't'; }
+        else if (c < 0x20)  {
+            out += '\\'; out += 'u'; out += '0'; out += '0';
+            out += hexDigits[(c >> 4) & 0x0F];
+            out += hexDigits[c & 0x0F];
+        }
+        else { out += (char)c; }
+    }
 }
 inline bool checkApiRateLimit() {
     unsigned long now = millis();
@@ -433,7 +465,7 @@ inline bool checkFlashWriteRate() {
         flashWriteCounter = 0;
         flashWriteHourStart = now;
     }
-    if (flashWriteCounter > 100) return false;
+    if (flashWriteCounter >= 100) return false;
     flashWriteCounter++;
     return true;
 }
@@ -1391,8 +1423,20 @@ function toggleStation(){
       btn.textContent=enabled?'Disable WiFi Station':'Enable WiFi Station';
       toast(enabled?'WiFi station enabled':'WiFi station disabled');
       setTimeout(loadWiFiInfo,2000);
-    }else toast('Toggle failed',false);
-  }).catch(()=>{btn.disabled=false;btn.textContent='Toggle WiFi Station';toast('Error',false);});
+    }else{
+      btn.disabled=false;
+      btn.textContent = document.getElementById('staBadge').textContent === 'OFF'
+          ? 'Enable WiFi Station'
+          : 'Disable WiFi Station';
+      toast('Toggle failed',false);
+    }
+  }).catch(()=>{
+    btn.disabled=false;
+    btn.textContent = document.getElementById('staBadge').textContent === 'OFF'
+        ? 'Enable WiFi Station'
+        : 'Disable WiFi Station';
+    toast('Error',false);
+  });
 }
 
 function loadWiFiInfo(){
@@ -1412,13 +1456,13 @@ function loadWiFiInfo(){
     if(d.connected){
       const bars=rssiBar(d.rssi||0);
       s.innerHTML='&#x2705; Connected to: <strong>'+escapeHtml(d.ssid)+'</strong> ('+escapeHtml(d.ip)+') &nbsp;'+bars+' '+d.rssi+'dBm';
-      s.className='alert ai';
+      s.className='alert as';
     }else{
       s.className='alert aw';
-      if(d.lastStatus !== undefined && d.ssid) {
-        s.innerHTML='&#x26A0;&#xFE0F; '+getWiFiStatusText(d.lastStatus)+' - Check SSID and password';
-      } else if(d.ssid && !d.stationEnabled) {
+      if(d.stationEnabled === false) {
         s.textContent='WiFi station is disabled';
+      } else if(d.lastStatus !== undefined && d.ssid) {
+        s.innerHTML='&#x26A0;&#xFE0F; '+getWiFiStatusText(d.lastStatus)+' - Check SSID and password';
       } else if(d.ssid) {
         s.textContent='Not connected to '+d.ssid;
       } else {
@@ -1441,8 +1485,12 @@ function startScan(){
   nl.style.display='block';
   nl.innerHTML='<div style="text-align:center;color:#90A4AE;padding:12px;font-size:13px">Scanning for networks\u2026</div>';
   fetch('/api/wifi/scan',{method:'POST'})
+  .then(r => {
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  })
   .then(()=>{ scanTimer=setInterval(pollScan,2500); })
-  .catch(()=>endScan());
+  .catch(()=>{ endScan(); toast('Cannot scan right now \u2014 try again shortly', false); });
 }
 function pollScan(){
   fetch('/api/wifi/scan').then(r=>r.json()).then(d=>{
@@ -1483,20 +1531,29 @@ function save(){
   s.style.display='';
   s.innerHTML='&#x23F3; Connecting to <strong>'+escapeHtml(ssid)+'</strong>...';
   s.className='alert ai';
-  
+
+  const saveBtn = document.querySelector('button.bsave[onclick="save()"]');
+  if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'Saving\u2026'; }
+
   fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid,password:document.getElementById('pw').value})})
   .then(r=>r.json()).then(d=>{
+    if(saveBtn){ saveBtn.disabled = false; saveBtn.innerHTML = '&#x1F4BE; Save &amp; Connect'; }
     if(d.success){
-      toast('Saved! Connecting to '+escapeHtml(ssid)+'...');
+      toast('Saved! Connecting to '+ssid+'...');
       setTimeout(loadWiFiInfo, 3000);
       setTimeout(loadWiFiInfo, 8000);
       setTimeout(loadWiFiInfo, 15000);
     } else {
-      toast('Failed: '+escapeHtml(d.error||'unknown'),false);
+      toast('Failed: '+(d.error||'unknown'),false);
       s.innerHTML='&#x26A0;&#xFE0F; Save failed';
       s.className='alert aw';
     }
-  }).catch(()=>toast('Error',false));
+  }).catch(()=>{
+    if(saveBtn){ saveBtn.disabled = false; saveBtn.innerHTML = '&#x1F4BE; Save &amp; Connect'; }
+    s.innerHTML='&#x26A0;&#xFE0F; Connection error \u2014 check network';
+    s.className='alert aw';
+    toast('Error',false);
+  });
 }
 </script></body></html>)raw";
 
@@ -1540,19 +1597,21 @@ function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElemen
 setInterval(tick,1000);tick();
 fetch('/api/ntp').then(r=>r.json()).then(d=>{
   document.getElementById('srv').value=d.ntpServer||'time.google.com';
-  document.getElementById('gmt').value=d.gmtOffset||28800;
-  document.getElementById('dst').value=d.daylightOffset||0;
-  document.getElementById('shi').value=d.syncHours||1;
+  document.getElementById('gmt').value=(d.gmtOffset!==undefined&&d.gmtOffset!==null)?d.gmtOffset:28800;
+  document.getElementById('dst').value=(d.daylightOffset!==undefined&&d.daylightOffset!==null)?d.daylightOffset:0;
+  document.getElementById('shi').value=(d.syncHours!==undefined&&d.syncHours!==null)?d.syncHours:1;
 }).catch(()=>{});
 function save(){
   const h=parseInt(document.getElementById('shi').value);
-  if(h<1||h>24){toast('Sync interval must be 1\u201324 h',false);return;}
+  if(isNaN(h)||h<1||h>24){toast('Sync interval must be 1\u201324 h',false);return;}
+  const srv=document.getElementById('srv').value.trim();
+  if(!srv){toast('NTP server required',false);return;}
   fetch('/api/ntp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    ntpServer:document.getElementById('srv').value,
+    ntpServer:srv,
     gmtOffset:parseInt(document.getElementById('gmt').value),
     daylightOffset:parseInt(document.getElementById('dst').value),
     syncHours:h
-  })}).then(r=>r.json()).then(d=>{if(d.success)toast('NTP settings saved!');else toast('Failed: '+d.error,false);})
+  })}).then(r=>r.json()).then(d=>{if(d.success)toast('NTP settings saved!');else toast('Failed: '+(d&&d.error?d.error:'unknown'),false);})
   .catch(()=>toast('Error',false));
 }
 function sync(){
@@ -1627,7 +1686,7 @@ const char ap_html[] PROGMEM = R"raw(<!DOCTYPE html>
 <option value="1">Hidden (do not broadcast)</option>
 </select>
 </div>
-<button class="btn bsave" onclick="save()">&#x1F4BE; Save &amp; Apply</button>
+<button type="button" class="btn bsave" onclick="save()">&#x1F4BE; Save &amp; Apply</button>
 </div>
 </main>
 <div id="toast"></div>
@@ -1636,27 +1695,44 @@ function togglePw(id,btn){const el=document.getElementById(id);if(!el)return;el.
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
 function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
+function refreshPwWarn(){
+  const pwEl = document.getElementById('pw');
+  const warnEl = document.getElementById('pwWarn');
+  if(!pwEl || !warnEl) return;
+  warnEl.style.display = (pwEl.value.length === 0) ? '' : 'none';
+}
 fetch('/api/ap').then(r=>r.json()).then(d=>{
   document.getElementById('ssid').value=d.ap_ssid||'';
   document.getElementById('ch').value=d.ap_channel||6;
   document.getElementById('hidden').value=d.ap_hidden?'1':'0';
   var hasPw = (d.hasPassword === true) || (typeof d.ap_password === 'string' && d.ap_password.length > 0);
   document.getElementById('pwWarn').style.display = hasPw ? 'none' : '';
-}).catch(()=>{});
+}).catch(()=>{
+  refreshPwWarn();
+});
 document.getElementById('pw').addEventListener('input',function(){
   document.getElementById('pwWarn').style.display = (this.value.length === 0) ? '' : 'none';
 });
 function save(){
+  const ssid=document.getElementById('ssid').value;
   const pw=document.getElementById('pw').value;
+  if(ssid.length<1||ssid.length>31){toast('AP SSID must be 1-31 characters',false);return;}
   if(pw.length>0&&pw.length<8){toast('Password must be 8+ chars or blank',false);return;}
+  const btn=document.querySelector('button.bsave[onclick="save()"]');
+  if(btn){btn.disabled=true;btn.textContent='Applying\u2026';}
   fetch('/api/ap',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    ap_ssid:document.getElementById('ssid').value,
+    ap_ssid:ssid,
     ap_password:pw,
     ap_channel:parseInt(document.getElementById('ch').value),
     ap_hidden:document.getElementById('hidden').value==='1'
   })}).then(r=>r.json()).then(d=>{
-    if(d.success){toast('AP settings applied!');}else toast('Failed: '+d.error,false);
-  }).catch(()=>toast('Error',false));
+    if(btn){btn.disabled=false;btn.innerHTML='&#x1F4BE; Save &amp; Apply';}
+    if(d&&d.success){toast('AP settings applied!');}
+    else{toast('Failed: '+((d&&d.error)?d.error:'unknown'),false);}
+  }).catch(()=>{
+    if(btn){btn.disabled=false;btn.innerHTML='&#x1F4BE; Save &amp; Apply';}
+    toast('Error',false);
+  });
 }
 </script></body></html>)raw";
 
@@ -1722,6 +1798,35 @@ function toast(m,ok=true){const t=document.getElementById('toast');t.textContent
 function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
 
+function escapeHtml(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function utf8Clamp(str, maxBytes){
+  if(typeof str !== 'string') return '';
+  let bytes = 0, out = '';
+  for(let i = 0; i < str.length; i++){
+    const c = str.charCodeAt(i);
+    let step;
+    if(c < 0x80) step = 1;
+    else if(c < 0x800) step = 2;
+    else if(c >= 0xD800 && c <= 0xDBFF){
+      const c2 = str.charCodeAt(i+1);
+      step = (c2 >= 0xDC00 && c2 <= 0xDFFF) ? 4 : 3;
+    } else step = 3;
+    if(bytes + step > maxBytes) break;
+    bytes += step;
+    if(step === 4){ out += str[i] + str[i+1]; i++; }
+    else out += str[i];
+  }
+  return out;
+}
+
 function pn(p){return pinNames[p]||('GPIO'+p);}
 
 function getAvailablePins() {
@@ -1731,12 +1836,16 @@ function getAvailablePins() {
 
 function load(){
   fetch('/api/pins').then(r=>r.json()).then(d=>{
+    if(!d || typeof d !== 'object' || d.error || !Array.isArray(d.relays)){
+      toast('Load failed: ' + ((d && d.error) ? d.error : 'bad response'), false);
+      return;
+    }
     pinCfg=d;
-    if (!pinCfg.relays) pinCfg.relays = [];
     for (let i = 0; i < pinCfg.relays.length; i++) {
         if (pinCfg.relays[i].activeLow === undefined) pinCfg.relays[i].activeLow = pinCfg.globalActiveLow;
     }
     document.getElementById('globalActiveLow').value=pinCfg.globalActiveLow?'1':'0';
+    markPinsClean();
     render();
   }).catch(()=>toast('Failed to load',false));
 }
@@ -1744,10 +1853,12 @@ function load(){
 function applyGlobalLogicToAll() {
     const newGlobalValue = document.getElementById('globalActiveLow').value === '1';
     if (confirm('Apply "' + (newGlobalValue ? 'Active LOW' : 'Active HIGH') + '" to ALL relays? Individual relay logic will be overwritten.')) {
+        commitPendingNames();
         for (let i = 0; i < pinCfg.relays.length; i++) {
             pinCfg.relays[i].activeLow = newGlobalValue;
         }
         pinCfg.globalActiveLow = newGlobalValue;
+        markPinsDirty();
         render();
         toast('Applied in form \u2014 click Save & Apply to persist');
     } else {
@@ -1757,13 +1868,32 @@ function applyGlobalLogicToAll() {
 
 function getPinOpts(cur){
   const used=pinCfg.relays.map(r=>r.pin);
-  return allValidPins.map(p=>{
+  let opts = '';
+  const curValid = allValidPins.includes(cur);
+  if(!curValid){
+    opts += '<option value="" selected disabled>(unassigned)</option>';
+  }
+  opts += allValidPins.map(p=>{
     const usedByOther=used.includes(p) && p!==cur;
     return '<option value="'+p+'" '+(p===cur?'selected':'')+' '+(usedByOther?'disabled':'')+'>'+pn(p)+' (GPIO'+p+')'+(usedByOther?' [USED]':'')+'</option>';
   }).join('');
+  return opts;
+}
+
+function commitPendingNames(){
+  const tb = document.getElementById('pinBody');
+  if(!tb || !pinCfg || !Array.isArray(pinCfg.relays)) return;
+  const inputs = tb.querySelectorAll('input[type="text"]');
+  for(let i = 0; i < inputs.length && i < pinCfg.relays.length; i++){
+    const el = inputs[i];
+    if(el && typeof el.value === 'string'){
+      pinCfg.relays[i].name = utf8Clamp(el.value, 15);
+    }
+  }
 }
 
 function render(){
+  commitPendingNames();
   const tb=document.getElementById('pinBody');
   tb.innerHTML='';
   pinCfg.relays.forEach((r,i)=>{
@@ -1772,8 +1902,8 @@ function render(){
     const isCustom = (r.activeLow !== pinCfg.globalActiveLow);
     const customIndicator = isCustom ? ' <span style="font-size:10px;color:#F9A825;">✦</span>' : '';
     tr.innerHTML='<td><strong>Relay '+(i+1)+'</strong></td>'+
-      '<td><input type="text" value="'+(r.name||'Relay '+(i+1))+'" maxlength="15" onchange="pinCfg.relays['+i+'].name=this.value" style="width:110px;padding:5px;border:1px solid #CFD8DC;border-radius:4px"></td>'+
-      '<td><select onchange="updatePin('+i+',parseInt(this.value))" style="padding:5px;border:1px solid #CFD8DC;border-radius:4px">'+getPinOpts(r.pin)+'</select></td>'+
+      '<td><input type="text" value="'+escapeHtml(r.name||('Relay '+(i+1)))+'" maxlength="15" onchange="pinCfg.relays['+i+'].name=utf8Clamp(this.value,15)" style="width:110px;padding:5px;border:1px solid #CFD8DC;border-radius:4px"></td>'+
+      '<td><select onchange="var v=parseInt(this.value); if(!isNaN(v)) updatePin('+i+',v);" style="padding:5px;border:1px solid #CFD8DC;border-radius:4px">'+getPinOpts(r.pin)+'</select></td>'+
       '<td><select onchange="pinCfg.relays['+i+'].activeLow=this.value===\'1\'" style="padding:5px;border:1px solid #CFD8DC;border-radius:4px;'+(isCustom?'background:#FFF8E1;':'')+'"><option value="1" '+(r.activeLow?'selected':'')+'>Active LOW</option><option value="0" '+(!r.activeLow?'selected':'')+'>Active HIGH</option></select>'+customIndicator+'</td>'+
       '<td><button class="btn bremove" onclick="removeRelay('+i+')" '+(pinCfg.relays.length<2?'disabled':'')+'>\u2715</button></td>';
     tb.appendChild(tr);
@@ -1804,6 +1934,7 @@ function renderAvail(){
 
 function updatePin(idx,pin){
   pinCfg.relays[idx].pin=pin;
+  markPinsDirty();
   render();
 }
 
@@ -1814,12 +1945,14 @@ function addRelayOnPin(pin){
     toast('Pin ' + pn(pin) + ' is not available', false);
     return;
   }
+  commitPendingNames();
   pinCfg.relays.push({
     name:'Relay '+(pinCfg.relays.length+1),
     pin:pin,
     activeLow:pinCfg.globalActiveLow===true
   });
   pinCfg.numRelays=pinCfg.relays.length;
+  markPinsDirty();
   render();
   toast('Added relay on '+pn(pin));
 }
@@ -1835,13 +1968,16 @@ function addRelay(){
 
 function removeRelay(i){
   if(pinCfg.relays.length<2){toast('Need at least 1 relay',false);return;}
+  commitPendingNames();
   pinCfg.relays.splice(i,1);
   pinCfg.numRelays=pinCfg.relays.length;
+  markPinsDirty();
   render();
 }
 
 function savePins(){
   if(!confirm('Save pins and apply changes immediately?'))return;
+  commitPendingNames();
   pinCfg.globalActiveLow=document.getElementById('globalActiveLow').value==='1';
   pinCfg.numRelays=pinCfg.relays.length;
   
@@ -1851,10 +1987,22 @@ function savePins(){
       }
   }
   
+  const btns = document.querySelectorAll('button.sys-action');
+  let saveBtn = null;
+  for(let bi = 0; bi < btns.length; bi++){
+    if((btns[bi].getAttribute('onclick')||'').indexOf('savePins')>=0){ saveBtn = btns[bi]; break; }
+  }
+  if(saveBtn){ saveBtn.disabled = true; saveBtn.dataset.prevText = saveBtn.innerHTML; saveBtn.textContent = 'Saving...'; }
+
   fetch('/api/pins',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pinCfg)})
   .then(r=>r.json()).then(d=>{
-    if(d.success){toast('Pins saved & applied!');load();}else toast('Failed: '+(d.error||''),false);
-  }).catch(()=>toast('Error',false));
+    if(saveBtn){ saveBtn.disabled = false; if(saveBtn.dataset.prevText) saveBtn.innerHTML = saveBtn.dataset.prevText; }
+    if(d && d.success){markPinsClean();toast('Pins saved & applied!');load();}
+    else toast('Failed: '+((d&&d.error)?d.error:'unknown'),false);
+  }).catch(()=>{
+    if(saveBtn){ saveBtn.disabled = false; if(saveBtn.dataset.prevText) saveBtn.innerHTML = saveBtn.dataset.prevText; }
+    toast('Error',false);
+  });
 }
 
 function resetPinsToDefault(){
@@ -1869,26 +2017,32 @@ function resetPinsToDefault(){
   fetch('/api/pins/reset', {method: 'POST'})
   .then(r => r.json())
   .then(d => {
-    if(d.success) {
+    if(btn) {
+      btn.disabled = false;
+      btn.textContent = '🔄 Reset All';
+    }
+    if(d && d.success) {
       toast('GPIO pins reset!');
       setTimeout(() => load(), 1000);
     } else {
-      toast('Reset failed: ' + (d.error || 'unknown'), false);
-      if(btn) {
-        btn.disabled = false;
-        btn.textContent = '🔄 Reset All';
-      }
+      toast('Reset failed: ' + ((d && d.error) ? d.error : 'unknown'), false);
     }
   })
   .catch(() => {
-    toast('Error resetting pins', false);
     if(btn) {
       btn.disabled = false;
-      btn.textContent = '🔄 Reset GPIO to Default';
+      btn.textContent = '🔄 Reset All';
     }
+    toast('Error resetting pins', false);
   });
 }
 
+let _pinsDirty = false;
+function markPinsDirty(){ _pinsDirty = true; }
+function markPinsClean(){ _pinsDirty = false; }
+window.addEventListener('beforeunload', function(e){
+  if(_pinsDirty){ e.preventDefault(); e.returnValue = ''; return ''; }
+});
 load();
 </script></body></html>)raw";
 
@@ -1947,17 +2101,32 @@ const char system_html[] PROGMEM = R"raw(<!DOCTYPE html>
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='show '+(ok?'ok':'er');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3000);}
 function tick(){fetch('/api/time').then(r=>r.json()).then(d=>{document.getElementById('clk').textContent=d.time||'--:--:--';const w=document.querySelector('.wd'),n=document.querySelector('.nd');if(w)w.className='dot wd '+(d.wifi?'g':'r');if(n)n.className='dot nd '+(d.ntp?'g':'y');}).catch(()=>{});}
 setInterval(tick,1000);tick();
-function fmtUp(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;return h+'h '+m+'m '+ss+'s';}
-function rssiDesc(r){if(!r)return'\u2014';return r+'dBm ('+( r>=-50?'Excellent':r>=-60?'Good':r>=-70?'Fair':'Weak')+')';}
+function fmtUp(s){
+  if(s === undefined || s === null || !isFinite(s) || s < 0) s = 0;
+  const d = Math.floor(s/86400);
+  const h = Math.floor((s%86400)/3600);
+  const m = Math.floor((s%3600)/60);
+  const ss = Math.floor(s%60);
+  if(d > 0) return d+'d '+h+'h '+m+'m '+ss+'s';
+  return h+'h '+m+'m '+ss+'s';
+}
+function rssiDesc(r){if(r===null||r===undefined||!isFinite(r))return'\u2014';return r+'dBm ('+( r>=-50?'Excellent':r>=-60?'Good':r>=-70?'Fair':'Weak')+')';}
 function loadSys(){
-  fetch('/api/system').then(r=>r.json()).then(d=>{
+  fetch('/api/system').then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(d=>{
+    if(!d||typeof d!=='object'||typeof d.wifiConnected==='undefined')return;
     document.getElementById('sip').textContent=d.wifiConnected?d.ip:'(not connected)';
     document.getElementById('sap').textContent=d.ap_ip;
     document.getElementById('shp').textContent=(d.freeHeap/1024).toFixed(1)+' KB';
-    document.getElementById('sup').textContent=fmtUp(d.uptime);
+    let upSec = (typeof d.uptime === 'number' && isFinite(d.uptime) && d.uptime >= 0) ? d.uptime : 0;
+    if (typeof d.uptimeHi === 'number' && typeof d.uptimeLo === 'number' && isFinite(d.uptimeHi) && isFinite(d.uptimeLo)) {
+      const totalMs = (d.uptimeHi * 4294967296) + (d.uptimeLo >>> 0);
+      const precise = Math.floor(totalMs / 1000);
+      if (isFinite(precise) && precise >= 0) upSec = precise;
+    }
+    document.getElementById('sup').textContent=fmtUp(upSec);
     document.getElementById('smd').textContent=d.mdnsHostname;
     document.getElementById('srs').textContent=d.wifiConnected?rssiDesc(d.rssi):'\u2014';
-    document.getElementById('snt').textContent=d.ntpSynced?(d.ntpSyncAge>0?Math.floor(d.ntpSyncAge/60)+' min ago':'Just now'):'Never';
+    document.getElementById('snt').textContent=d.ntpSynced?(d.ntpSyncAge>=60?Math.floor(d.ntpSyncAge/60)+' min ago':'Just now'):'Never';
     document.getElementById('sns').textContent=d.ntpServer||'\u2014';
     document.getElementById('hn').value=d.hostname||'esp8266relay';
     document.getElementById('sws').textContent=d.wifiStationEnabled?'Enabled':'Disabled';
@@ -1968,7 +2137,7 @@ function loadSys(){
     
     if(d.ds3231Present){
       rtcDiv.innerHTML = '<span class="rtc-status rtc-ok">&#x2705; Connected</span>';
-      tmpDiv.textContent = d.ds3231Temp ? d.ds3231Temp.toFixed(1)+'°C' : 'N/A';
+      tmpDiv.textContent = (d.ds3231Temp !== null && d.ds3231Temp !== undefined && isFinite(d.ds3231Temp)) ? d.ds3231Temp.toFixed(1)+'°C' : 'N/A';
       
     } else {
       rtcDiv.innerHTML = '<span class="rtc-status rtc-na">&#x274C; Not Detected</span>';
@@ -1993,8 +2162,14 @@ function fct(){
   if(!confirm('FACTORY RESET \u2014 ALL settings will be erased. Continue?'))return;
   const t = prompt('Type RESET (uppercase) to confirm factory reset:');
   if(t !== 'RESET'){ toast('Factory reset cancelled', false); return; }
-  fetch('/api/factory-reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:'RESET'})}).then(()=>toast('Factory reset \u2014 reconnect to default AP')).catch(()=>{});
-  setTimeout(()=>window.location.href='/',7000);
+  fetch('/api/factory-reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:'RESET'})})
+    .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+    .then(d=>{
+      if(!d||!d.success){ toast('Factory reset rejected by device', false); return; }
+      toast('Factory reset \u2014 reconnect to default AP');
+      setTimeout(()=>window.location.href='/',7000);
+    })
+    .catch(()=>toast('Error sending factory reset',false));
 }
 </script></body></html>)raw";
 
@@ -2100,6 +2275,7 @@ void updateCrystalCalibration(epoch64_t measuredEpoch, unsigned long measuredMs,
 void enableWiFiStation() {
     if (wifiStationEnabled) return;    
     wifiStationEnabled = true;
+    pendingStationDisable = false;
     sysConfig.wifi_station_enabled = true;
     markConfigDirty();    
     if (strlen(sysConfig.sta_ssid) > 0) {
@@ -2332,21 +2508,21 @@ void selfRecoveryMemoryCleanup() {
 }
 void selfRecoveryNetworkHeal() {
     if (!networkHealingInProgress) {
-        networkHealingInProgress = true;        
+        networkHealingInProgress = true;
         if (!wifiConnected && wifiStationEnabled && strlen(sysConfig.sta_ssid) > 0) {
             WiFi.reconnect();
             wcsState = WCS_PENDING;
             wcsStart = millis();
-        }        
+        }
         if (wifiConnected && !mdnsStarted) {
             startMDNS();
-        }        
+        }
         if (elapsedSince(lastDNSRestart) > 3600000UL) {
             selfRecoveryDNS();
             lastDNSRestart = millis();
         }
+        networkHealingInProgress = false;
     }
-    networkHealingInProgress = false;
     selfRecoveryState = SR_IDLE;
 }
 void checkWebServerHealth() {
@@ -2751,12 +2927,7 @@ epoch64_t getCurrentEpoch() {
     if (!rtcInitialized || internalEpoch == 0) return 0;    
     unsigned long elapsed = elapsedSince(internalMillisAtLastSync);
     double elapsedSeconds;    
-    if (crystalCalibrated && fabsf(crystalDriftPPM) < 50.0f) {
-        double ppmFactor = 1.0 + (crystalDriftPPM / 1000000.0);
-        elapsedSeconds = (double)elapsed * driftCompensation * ppmFactor / 1000.0;
-    } else {
-        elapsedSeconds = (double)elapsed * driftCompensation / 1000.0;
-    }    
+    elapsedSeconds = (double)elapsed * driftCompensation / 1000.0;    
     epoch64_t result = internalEpoch + (epoch64_t)elapsedSeconds;    
     return result;
 }
@@ -2857,7 +3028,7 @@ void startMDNS() {
 }
 void beginWiFiConnect() {
     if (!wifiStationEnabled || strlen(sysConfig.sta_ssid) == 0) return;
-    if (millis() < wifiGiveUpUntil) return;    
+    if (wifiGiveUpUntil != 0 && (int32_t)(millis() - wifiGiveUpUntil) < 0) return;    
     checkConnectionRateLimit();
     if (reconnectCountThisHour >= MAX_RECONNECT_ATTEMPTS) {
         if (persistentDisconnectTime == 0) persistentDisconnectTime = millis();        
@@ -2932,14 +3103,19 @@ void performHeapCleanup() {
 }
 void performSelfCheck() {
     if (!LittleFS.exists(CONFIG_FILE)) {
-        initDefaults();
-    }    
+        String bakPath = String(CONFIG_FILE) + ".bak";
+        if (LittleFS.exists(bakPath) && LittleFS.rename(bakPath, CONFIG_FILE)) {
+            loadConfiguration();
+        } else if (sysConfig.magic != EEPROM_MAGIC) {
+            initDefaults();
+        }
+    }
     for (int i = 0; i < numRelays; i++) {
         pinMode(relayConfigs[i].pin, OUTPUT);
-    }    
+    }
     if (sysConfig.magic != EEPROM_MAGIC) {
         loadConfiguration();
-    }    
+    }
 }
 void updateRelayPins() {
     for (int i = 0; i < numRelays; i++) {
@@ -2988,6 +3164,8 @@ void proactiveMaintenance() {
 //  CONFIGURATION FUNCTIONS
 // =============================================================================
 void initDefaults() {
+    flashWriteCounter = 0;
+    flashWriteHourStart = millis();
     memset(&sysConfig, 0, sizeof(SystemConfig));
     sysConfig.magic = EEPROM_MAGIC;
     sysConfig.version = EEPROM_VERSION;
@@ -3217,6 +3395,7 @@ void setup() {
 void loop() {
     ESP.wdtFeed();
     yield();    
+    (void)getUptimeMs64();
     unsigned long now = millis();    
     if (now - lastWatchdogFeed >= WATCHDOG_FEED_INTERVAL) {
         ESP.wdtFeed();
@@ -3271,6 +3450,10 @@ void loop() {
     if (pendingAPRestart && elapsedSince(pendingAPRestartAt) >= 800UL) {
         pendingAPRestart = false;
         restartAP();
+    }
+    if (pendingStationDisable && elapsedSince(pendingStationDisableAt) >= 500UL) {
+        pendingStationDisable = false;
+        disableWiFiStation();
     }
     updateStatusLED();    
     if (wifiStationEnabled && wifiConnected && WiFi.status() != WL_CONNECTED) {
@@ -3649,8 +3832,17 @@ void handleSaveRelayName() {
     int relay = doc["relay"];
     const char* name = doc["name"];
     if (relay >= 0 && relay < numRelays && name && strlen(name) > 0) {
-        strncpy(relayConfigs[relay].name, name, 15);
-        relayConfigs[relay].name[15] = '\0';
+        char trimmed[16];
+        size_t n = strnlen(name, 15);
+        memcpy(trimmed, name, n);
+        trimmed[n] = '\0';
+        bool hasContent = false;
+        for (size_t k = 0; k < n; k++) if (trimmed[k] != ' ') { hasContent = true; break; }
+        if (!hasContent) {
+            server.send(400, "application/json", "{\"success\":false}");
+            return;
+        }
+        memcpy(relayConfigs[relay].name, trimmed, n + 1);
         markConfigDirty();
         server.send(200, "application/json", "{\"success\":true}");
     } else {
@@ -3783,7 +3975,24 @@ void handleGetTime() {
     }    
     bool ntpSynced = (lastNTPSync > 0 || lastNTPSyncEpoch > 0 ||
                       lastDS3231SyncEpoch > 0 || lastBrowserSyncEpoch > 0);
-    server.send(200, "application/json", "{\"time\":\"" + ts + "\",\"wifi\":" + String(wifiConnected ? "true" : "false") + ",\"ntp\":" + String(ntpSynced ? "true" : "false") + "}");
+    bool ntpFresh = false;
+    if (ntpSynced) {
+        unsigned long oldestAge = 0xFFFFFFFFUL;
+        if (lastNTPSync > 0) {
+            unsigned long a = elapsedSince(lastNTPSync);
+            if (a < oldestAge) oldestAge = a;
+        }
+        if (lastBrowserSyncMs > 0) {
+            unsigned long a = elapsedSince(lastBrowserSyncMs);
+            if (a < oldestAge) oldestAge = a;
+        }
+        if (lastDS3231Sync > 0) {
+            unsigned long a = elapsedSince(lastDS3231Sync);
+            if (a < oldestAge) oldestAge = a;
+        }
+        if (oldestAge < 172800000UL) ntpFresh = true;
+    }
+    server.send(200, "application/json", "{\"time\":\"" + ts + "\",\"wifi\":" + String(wifiConnected ? "true" : "false") + ",\"ntp\":" + String(ntpFresh ? "true" : "false") + "}");
 }
 void handleBrowserTimeSync() {
     if (!checkApiRateLimit()) {
@@ -3799,6 +4008,10 @@ void handleBrowserTimeSync() {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}"); 
         return; 
     }    
+    if (!doc.containsKey("epoch") || doc["epoch"].isNull()) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing timestamp\"}");
+        return;
+    }
     long long rawVal = doc["epoch"] | 0LL;
     epoch64_t browserEpoch = (epoch64_t)rawVal;
     if (browserEpoch < EPOCH64_MIN_VALID || browserEpoch > EPOCH64_APP_MAX) {
@@ -3824,10 +4037,7 @@ void handleGetWiFi() {
     resp.reserve(256);
     String safeSsid;
     safeSsid.reserve(strlen(sysConfig.sta_ssid) * 2 + 1);
-    for (const char* p = sysConfig.sta_ssid; *p; ++p) {
-        if (*p == '"' || *p == '\\') { safeSsid += '\\'; }
-        safeSsid += *p;
-    }
+    appendJsonEscaped(safeSsid, sysConfig.sta_ssid);
     resp = "{\"ssid\":\"" + safeSsid + "\",";
     resp += "\"connected\":" + String(wifiConnected ? "true" : "false") + ",";
     resp += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
@@ -3938,9 +4148,17 @@ void handleWiFiToggle() {
         return;
     }    
     if (!server.hasArg("plain")) {
-        toggleWiFiStation();
-        server.send(200, "application/json", 
-            "{\"success\":true,\"enabled\":" + String(wifiStationEnabled ? "true" : "false") + "}");
+        bool willEnable = !wifiStationEnabled;
+        if (willEnable) {
+            enableWiFiStation();
+            server.send(200, "application/json", 
+                "{\"success\":true,\"enabled\":true}");
+        } else {
+            server.send(200, "application/json", 
+                "{\"success\":true,\"enabled\":false}");
+            pendingStationDisable = true;
+            pendingStationDisableAt = millis();
+        }
         return;
     }    
     StaticJsonDocument<128> doc;
@@ -3951,11 +4169,14 @@ void handleWiFiToggle() {
     bool enable = doc["enable"] | false;    
     if (enable) {
         enableWiFiStation();
+        server.send(200, "application/json", 
+            "{\"success\":true,\"enabled\":true}");
     } else {
-        disableWiFiStation();
-    }    
-    server.send(200, "application/json", 
-        "{\"success\":true,\"enabled\":" + String(wifiStationEnabled ? "true" : "false") + "}");
+        server.send(200, "application/json", 
+            "{\"success\":true,\"enabled\":false}");
+        pendingStationDisable = true;
+        pendingStationDisableAt = millis();
+    }
 }
 void handleWiFiStationStatus() {
     if (!checkApiRateLimit()) {
@@ -3973,10 +4194,7 @@ void handleGetNTP() {
     }
     String safeSrv;
     safeSrv.reserve(strlen(sysConfig.ntp_server) * 2 + 1);
-    for (const char* p = sysConfig.ntp_server; *p; ++p) {
-        if (*p == '"' || *p == '\\') safeSrv += '\\';
-        safeSrv += *p;
-    }
+    appendJsonEscaped(safeSrv, sysConfig.ntp_server);
     server.send(200, "application/json", "{\"ntpServer\":\"" + safeSrv + "\",\"gmtOffset\":" + String(sysConfig.gmt_offset) + ",\"daylightOffset\":" + String(sysConfig.daylight_offset) + ",\"syncHours\":" + String(extConfig.ntp_sync_hours) + "}");
 }
 void handleSaveNTP() {
@@ -3988,7 +4206,12 @@ void handleSaveNTP() {
     StaticJsonDocument<256> doc;
     if (deserializeJson(doc, server.arg("plain"))) { server.send(400, "application/json", "{\"success\":false}"); return; }
     const char* srv = doc["ntpServer"];
+    bool srvValid = false;
     if (srv && strlen(srv) > 0 && strlen(srv) < 48) {
+        srvValid = false;
+        for (const char* p = srv; *p; ++p) { if (*p != ' ') { srvValid = true; break; } }
+    }
+    if (srvValid) {
         char oldSrv[48];
         long oldGmt = sysConfig.gmt_offset;
         int oldDst = sysConfig.daylight_offset;
@@ -4012,9 +4235,9 @@ void handleSaveNTP() {
             timeClient.setPoolServerName(sysConfig.ntp_server);
             timeClient.setTimeOffset(0); 
         }
-        if (doc.containsKey("syncHours")) {
-            uint8_t h = doc["syncHours"];
-            if (h >= 1 && h <= 24) { extConfig.ntp_sync_hours = h; saveExtConfig(); }
+        if (doc.containsKey("syncHours") && !doc["syncHours"].isNull()) {
+            long h = doc["syncHours"] | 1L;
+            if (h >= 1 && h <= 24) { extConfig.ntp_sync_hours = (uint8_t)h; saveExtConfig(); }
         }
         server.send(200, "application/json", "{\"success\":true}");
     } else {
@@ -4036,21 +4259,18 @@ void handleGetAP() {
         return;
     }
     String safeApSsid;
-    for (const char* p = sysConfig.ap_ssid; *p; ++p) {
-        if (*p == '"' || *p == '\\') safeApSsid += '\\';
-        safeApSsid += *p;
-    }
+    appendJsonEscaped(safeApSsid, sysConfig.ap_ssid);
     bool hasPassword = (strlen(sysConfig.ap_password) > 0);
     server.send(200, "application/json", "{\"ap_ssid\":\"" + safeApSsid + "\",\"ap_password\":\"\",\"hasPassword\":" + String(hasPassword ? "true" : "false") + ",\"ap_channel\":" + String(extConfig.ap_channel) + ",\"ap_hidden\":" + String(extConfig.ap_hidden ? "true" : "false") + "}");
 }
 void handleSaveAP() {
     if (!checkApiRateLimit()) {
-        server.send(429, "application/json", "{\"success\":false}");
+        server.send(429, "application/json", "{\"success\":false,\"error\":\"Too many requests\"}");
         return;
     }    
-    if (!server.hasArg("plain")) { server.send(400, "application/json", "{\"success\":false}"); return; }
+    if (!server.hasArg("plain")) { server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing body\"}"); return; }
     StaticJsonDocument<256> doc;
-    if (deserializeJson(doc, server.arg("plain"))) { server.send(400, "application/json", "{\"success\":false}"); return; }
+    if (deserializeJson(doc, server.arg("plain"))) { server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}"); return; }
     const char* ssid = doc["ap_ssid"];
     const char* pw = doc["ap_password"];
     if (pw && strlen(pw) > 0 && strlen(pw) < 8) {
@@ -4083,7 +4303,7 @@ void handleSaveAP() {
         pendingAPRestart = true;
         pendingAPRestartAt = millis();
     } else {
-        server.send(400, "application/json", "{\"success\":false}");
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"AP SSID must be 1-31 characters\"}");
     }
 }
 void handleGetSystem() {
@@ -4092,18 +4312,41 @@ void handleGetSystem() {
         return;
     }    
     String safeHost, safeNtp, safeSsid;
-    for (const char* p = sysConfig.hostname; *p; ++p) { if (*p == '"' || *p == '\\') safeHost += '\\'; safeHost += *p; }
-    for (const char* p = sysConfig.ntp_server; *p; ++p) { if (*p == '"' || *p == '\\') safeNtp += '\\'; safeNtp += *p; }
-    for (const char* p = sysConfig.sta_ssid; *p; ++p) { if (*p == '"' || *p == '\\') safeSsid += '\\'; safeSsid += *p; }
+    appendJsonEscaped(safeHost, sysConfig.hostname);
+    appendJsonEscaped(safeNtp, sysConfig.ntp_server);
+    appendJsonEscaped(safeSsid, sysConfig.sta_ssid);
     String resp = "{";
     resp += "\"hostname\":\"" + safeHost + "\",";
     resp += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
     resp += "\"ap_ip\":\"" + WiFi.softAPIP().toString() + "\",";
-    resp += "\"uptime\":" + String(millis() / 1000UL) + ",";
+    {
+        uint64_t u = getUptimeMs64();
+        unsigned long sec = (unsigned long)(u / 1000ULL);
+        resp += "\"uptime\":" + String(sec) + ",";
+        resp += "\"uptimeHi\":" + String((uint32_t)(u >> 32)) + ",";
+        resp += "\"uptimeLo\":" + String((uint32_t)(u & 0xFFFFFFFFULL)) + ",";
+    }
     resp += "\"freeHeap\":" + String(ESP.getFreeHeap()) + ",";
     bool ntpSynced = (lastNTPSync > 0 || lastNTPSyncEpoch > 0 ||
                       lastDS3231SyncEpoch > 0 || lastBrowserSyncEpoch > 0);
-    resp += "\"ntpSynced\":" + String(ntpSynced ? "true" : "false") + ",";
+    bool ntpFresh = false;
+    if (ntpSynced) {
+        unsigned long oldestAge = 0xFFFFFFFFUL;
+        if (lastNTPSync > 0) {
+            unsigned long a = elapsedSince(lastNTPSync);
+            if (a < oldestAge) oldestAge = a;
+        }
+        if (lastBrowserSyncMs > 0) {
+            unsigned long a = elapsedSince(lastBrowserSyncMs);
+            if (a < oldestAge) oldestAge = a;
+        }
+        if (lastDS3231Sync > 0) {
+            unsigned long a = elapsedSince(lastDS3231Sync);
+            if (a < oldestAge) oldestAge = a;
+        }
+        if (oldestAge < 172800000UL) ntpFresh = true;
+    }
+    resp += "\"ntpSynced\":" + String(ntpFresh ? "true" : "false") + ",";
     resp += "\"ntpServer\":\"" + safeNtp + "\",";
     unsigned long syncAge = 0;
     if (lastNTPSync > 0) syncAge = elapsedSince(lastNTPSync) / 1000UL;
@@ -4119,7 +4362,11 @@ void handleGetSystem() {
     resp += "\"ds3231Present\":" + String(ds3231Present ? "true" : "false") + ",";
     if (ds3231Present) {
         float temp = rtc.getTemperature();
-        resp += "\"ds3231Temp\":" + String(temp, 1);
+        if (isnan(temp) || !isfinite(temp)) {
+            resp += "\"ds3231Temp\":null";
+        } else {
+            resp += "\"ds3231Temp\":" + String(temp, 1);
+        }
     } else {
         resp += "\"ds3231Temp\":null";
     }
@@ -4221,6 +4468,32 @@ void handleSavePins() {
         }
         pinUsed[validIdx] = true;
     }
+    RelayConfig* oldRelays = (RelayConfig*)malloc(sizeof(RelayConfig) * MAX_RELAYS);
+    if (!oldRelays) {
+        server.send(503, "application/json", "{\"success\":false,\"error\":\"Low memory\"}");
+        return;
+    }
+    memcpy(oldRelays, relayConfigs, sizeof(RelayConfig) * MAX_RELAYS);
+    PinConfig oldPinConfig = pinConfig;
+    uint8_t   oldNumRelays = numRelays;
+    bool      oldRelayActiveLow = relayActiveLow;
+    {
+        static const uint8_t VP[] = {16, 14, 12, 13, 3, 1};
+        bool newUsed[6] = {false,false,false,false,false,false};
+        for (JsonObject r : relays) {
+            int p = r["pin"] | -1;
+            for (uint8_t k = 0; k < 6; k++) if (VP[k] == p) { newUsed[k] = true; break; }
+        }
+        for (int i = 0; i < MAX_RELAYS; i++) {
+            uint8_t p = relayConfigs[i].pin;
+            for (uint8_t k = 0; k < 6; k++) {
+                if (VP[k] == p && !newUsed[k]) {
+                    pinMode(p, OUTPUT);
+                    digitalWrite(p, relayConfigs[i].activeLow ? HIGH : LOW);
+                }
+            }
+        }
+    }
     pinConfig.numRelays = newNumRelays;
     pinConfig.globalActiveLow = newGlobalActiveLow;
     numRelays = newNumRelays;
@@ -4232,20 +4505,32 @@ void handleSavePins() {
         relayConfigs[idx].activeLow = r.containsKey("activeLow")
             ? (bool)r["activeLow"]
             : pinConfig.globalActiveLow;
-        if (r.containsKey("name")) {
-            strncpy(relayConfigs[idx].name, r["name"], 15);
-            relayConfigs[idx].name[15] = '\0';
+        {
+            const char* nm = r["name"] | (const char*)nullptr;
+            if (nm) {
+                strncpy(relayConfigs[idx].name, nm, 15);
+                relayConfigs[idx].name[15] = '\0';
+            }
+            if (relayConfigs[idx].name[0] == '\0') {
+                snprintf(relayConfigs[idx].name, sizeof(relayConfigs[idx].name),
+                         "Relay %d", idx + 1);
+            }
         }
         idx++;
     }    
     bool pinSaved = saveToFileAtomic(PINS_FILE, &pinConfig, sizeof(PinConfig));
-    bool cfgSaved = saveToFileAtomic(CONFIG_FILE, &sysConfig, sizeof(SystemConfig));
-    bool relaySaved = saveToFileAtomic(RELAY_FILE, relayConfigs, sizeof(RelayConfig) * MAX_RELAYS);
-    if (!pinSaved || !cfgSaved || !relaySaved) {
+    bool relaySaved = pinSaved && saveToFileAtomic(RELAY_FILE, relayConfigs, sizeof(RelayConfig) * MAX_RELAYS);
+    if (!pinSaved || !relaySaved) {
+        pinConfig = oldPinConfig;
+        numRelays = oldNumRelays;
+        relayActiveLow = oldRelayActiveLow;
+        memcpy(relayConfigs, oldRelays, sizeof(RelayConfig) * MAX_RELAYS);
+        free(oldRelays);
         markConfigDirty();
         server.send(500, "application/json", "{\"success\":false,\"error\":\"Flash save failed\"}");
         return;
     }
+    free(oldRelays);
     configDirty = false;
     lastConfigSave = millis();
     updateRelayPins();
@@ -4306,13 +4591,21 @@ void handleResetPins() {
         relayConfigs[i].activeLow = true;
         relayConfigs[i].pin = 0xFF;
     }    
-    savePinConfig();
-    saveConfiguration();   
+    bool pinSaved = saveToFileAtomic(PINS_FILE, &pinConfig, sizeof(PinConfig));
+    bool cfgSaved = pinSaved && saveToFileAtomic(CONFIG_FILE, &sysConfig, sizeof(SystemConfig));
+    bool relaySaved = cfgSaved && saveToFileAtomic(RELAY_FILE, relayConfigs, sizeof(RelayConfig) * MAX_RELAYS);
     updateRelayPins();
     free(preservedNames);
     free(preservedSchedules);
     free(preservedManualOverride);
     free(preservedManualState);
+    if (!pinSaved || !cfgSaved || !relaySaved) {
+        markConfigDirty();
+        server.send(500, "application/json", "{\"success\":false,\"error\":\"Flash save failed\"}");
+        return;
+    }
+    configDirty = false;
+    lastConfigSave = millis();
     server.send(200, "application/json", "{\"success\":true,\"message\":\"GPIO pins reset to default\"}");
 }
 void handleReset() {
@@ -4330,6 +4623,9 @@ void handleReset() {
     }
     server.send(200, "application/json", "{\"success\":true}");
     if (wifiStationEnabled) {
+        wifiConnected = false;
+        mdnsStarted = false;
+        wcsState = WCS_IDLE;
         selfRecoveryState = SR_WIFI_RECONNECT;
     }
 }
