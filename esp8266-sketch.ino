@@ -39,7 +39,6 @@ struct tm64 {
     int tm_mon;
     int tm_year;
     int tm_wday;
-    int tm_yday;
 };
 static inline int64_t epoch64FloorDiv(int64_t a, int64_t b) {
     int64_t q = a / b;
@@ -73,12 +72,6 @@ static inline bool epoch64ToTmUtc(epoch64_t epoch, struct tm64* out) {
     out->tm_mon  = (int)(m - 1LL);
     out->tm_mday = (int)d;
     out->tm_wday = epoch64FloorMod(days + 4LL, 7LL);
-    static const int mdays[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
-    int yday = out->tm_mday - 1;
-    for (int i = 0; i < out->tm_mon; i++) yday += mdays[i];
-    bool leap = ((y % 4LL == 0) && (y % 100LL != 0)) || (y % 400LL == 0);
-    if (leap && out->tm_mon > 1) yday += 1;
-    out->tm_yday = yday;
     return true;
 }
 
@@ -113,7 +106,6 @@ static const unsigned long HEAP_DEFRAG_INTERVAL = 1800000UL;
 static const unsigned long CONNECTION_CLEANUP_INTERVAL = 300000UL; 
 static const unsigned long DS3231_SYNC_INTERVAL = 3600000UL; 
 static const unsigned long DEEP_HEAL_INTERVAL = 86400000UL;
-static const unsigned long FLASH_WEAR_CHECK_INTERVAL = 604800000UL;
 static const unsigned long CRYSTAL_CALIBRATION_MIN_INTERVAL = 3600000UL;
 
 // =============================================================================
@@ -125,7 +117,6 @@ static const uint8_t       MAX_RECONNECT_ATTEMPTS = 20;
 static const unsigned long HEAP_CHECK_INTERVAL  = 1800000UL;
 static const unsigned long SELF_CHECK_INTERVAL  = 86400000UL;
 static const unsigned long TIME_CHECK_INTERVAL  = 60000UL;
-static const unsigned long LOOP_WATCHDOG_TIMEOUT = 300000UL;
 static const uint8_t       API_RATE_LIMIT = 10;           
 static const unsigned long RATE_LIMIT_WINDOW = 1000UL;    
 static const unsigned long MIN_HEAP_FOR_FULL_RESPONSE = 8192UL;
@@ -177,7 +168,6 @@ enum SelfRecoveryState {
     SR_WEB_SERVER_RECOVER,
     SR_DNS_RECOVER,
     SR_RTC_RECOVER,
-    SR_TIMER_RECOVER,
     SR_NETWORK_HEAL,
     SR_DEEP_HEAL
 };
@@ -228,11 +218,6 @@ epoch64_t lastDS3231SyncEpoch = 0;
 #define MAX_RELAYS 16
 uint8_t       numRelays = 6; 
 bool          relayActiveLow = true;
-
-// =============================================================================
-//  Days
-// =============================================================================
-const char* DAY_NAMES[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
 // =============================================================================
 //  Connection Management
@@ -360,7 +345,6 @@ unsigned long lastDNSRestart = 0;
 unsigned long lastHeapDefrag = 0;
 unsigned long lastWebServerRecovery = 0;
 unsigned long lastDeepHeal = 0;
-unsigned long lastFlashWearCheck = 0;
 bool deepHealInProgress = false;
 uint8_t flashWriteCounter = 0;
 unsigned long flashWriteHourStart = 0;
@@ -530,7 +514,6 @@ void checkWiFiStability();
 void emergencyHeapRecovery();
 void enableWiFiStation();
 void disableWiFiStation();
-void toggleWiFiStation();
 void handleRoot();
 void handleWiFiPage();
 void handleNtpPage();
@@ -2180,6 +2163,9 @@ void initDS3231() {
     if (rtc.begin()) {
         ds3231Present = true;       
         if (rtc.lostPower()) {
+            rtcInitialized = false;
+            internalEpoch = 0;
+            rtc.adjust(DateTime((uint32_t)EPOCH64_APP_MIN));
         } else {
             syncFromDS3231();
         }
@@ -2189,8 +2175,26 @@ void initDS3231() {
 }
 void syncFromDS3231() {
     if (!ds3231Present) return;    
+    static uint8_t rtcBadReadCount = 0;
+    static unsigned long lastHealthProbe = 0;
     DateTime now = rtc.now();
-    if (now.year() < 2024 || now.year() > 2099) return;    
+    if (now.year() < 2024 || now.year() > 2099) {
+        if (++rtcBadReadCount >= 3) {
+            ds3231Present = false;
+            rtcBadReadCount = 0;
+        }
+        rtcInitialized = false;
+        return;
+    }
+    rtcBadReadCount = 0;
+    if (elapsedSince(lastHealthProbe) >= 600000UL) {
+        lastHealthProbe = millis();
+        if (rtc.lostPower()) {
+            rtcInitialized = false;
+            internalEpoch = 0;
+            return;
+        }
+    }
     uint32_t rtcRaw = now.unixtime();
     epoch64_t ds3231Epoch = (epoch64_t)rtcRaw;    
     if (ds3231Epoch < EPOCH64_RTC_MIN || ds3231Epoch > EPOCH64_NTP_MAX) return;    
@@ -2198,14 +2202,10 @@ void syncFromDS3231() {
     if (rtcInitialized && internalEpoch > 0) {
         epoch64_t internalNow = getCurrentEpoch();
         int64_t delta = (int64_t)(ds3231Epoch - internalNow);
-        int64_t backwardLimit = (int64_t)(extConfig.ntp_sync_hours * 3600) * 4LL;
-        if (backwardLimit < 7200LL) backwardLimit = 7200LL;
-        bool reject = false;
-        if (delta < -backwardLimit) reject = true;
-        else if (delta > 86400LL) reject = true;
-        if (reject) {
-            lastDS3231SyncEpoch = ds3231Epoch;
-            lastDS3231Sync = nowMs;
+        int64_t window = (int64_t)extConfig.ntp_sync_hours * 3600LL;
+        if (window < 3600LL)  window = 3600LL;
+        if (window > 14400LL) window = 14400LL;
+        if (delta < -window || delta > window) {
             return;
         }
         unsigned long elapsedMs = elapsedSince(internalMillisAtLastSync);
@@ -2226,6 +2226,17 @@ void syncToDS3231(epoch64_t epoch) {
         ? (uint32_t)4102444800UL
         : (uint32_t)epoch;
     rtc.adjust(DateTime(clamped));
+    static uint8_t writeFailCount = 0;
+    Wire.beginTransmission(0x68);
+    uint8_t err = Wire.endTransmission();
+    if (err != 0) {
+        if (++writeFailCount >= 3) {
+            ds3231Present = false;
+            writeFailCount = 0;
+        }
+    } else {
+        writeFailCount = 0;
+    }
 }
 
 // =============================================================================
@@ -2310,14 +2321,6 @@ void disableWiFiStation() {
     
     markConfigDirty();
 }
-void toggleWiFiStation() {
-    if (wifiStationEnabled) {
-        disableWiFiStation();
-    } else {
-        enableWiFiStation();
-    }
-}
-
 // =============================================================================
 //  Self-Healing Functions
 // =============================================================================
@@ -2411,16 +2414,13 @@ void performDeepHeal() {
     if (wifiStationEnabled) startMDNS();    
     if (ds3231Present) {
         syncFromDS3231();
-    } else if (wifiConnected && wifiStationEnabled) {
+    }
+    if (!rtcInitialized && wifiConnected && wifiStationEnabled &&
+        ESP.getFreeHeap() > MIN_HEAP_FOR_NTP) {
         tryNTPSync();
     }    
     defragmentHeap();
     cleanupIdleConnections();    
-    FSInfo fs_info;
-    if (LittleFS.info(fs_info)) {
-        if (fs_info.usedBytes > fs_info.totalBytes * 0.9) {
-        }
-    }    
     deepHealInProgress = false;
     lastDeepHeal = millis();
 }
@@ -2478,13 +2478,13 @@ void selfRecoveryDNS() {
 void selfRecoveryRTC() {
     if (ds3231Present) {
         syncFromDS3231();
-    } else if (wifiConnected && wifiStationEnabled && ESP.getFreeHeap() > MIN_HEAP_FOR_NTP) {
+    }
+    if (!rtcInitialized && wifiConnected && wifiStationEnabled && ESP.getFreeHeap() > MIN_HEAP_FOR_NTP) {
         tryNTPSync();
-    } else {
-        if (internalEpoch > 0) {
-            internalMillisAtLastSync = millis();
-        }
-    }    
+    }
+    if (!rtcInitialized && internalEpoch > 0) {
+        internalMillisAtLastSync = millis();
+    }
     ntpFailCount = 0;
     selfRecoveryState = SR_IDLE;
 }
@@ -2907,11 +2907,6 @@ void flushConfigIfNeeded() {
     if (elapsedSince(lastConfigSave) < CONFIG_SAVE_INTERVAL) {
         return;
     }    
-    FSInfo fs_info;
-    if (LittleFS.info(fs_info)) {
-        if (fs_info.usedBytes >= fs_info.totalBytes * 0.95) {
-        }
-    }    
     if (ESP.getFreeHeap() < MIN_HEAP_FOR_SAVE) {
         return;
     }
@@ -3139,9 +3134,14 @@ void proactiveMaintenance() {
     }    
     if (rtcInitialized && wifiConnected && wifiStationEnabled) {
         unsigned long timeSinceSync = (lastNTPSync > 0) ? elapsedSince(lastNTPSync) : 0;
-        if (timeSinceSync > 3600000UL && (now - lastNTPAttempt) > NTP_RETRY_INTERVAL) {
+        if (timeSinceSync > 3600000UL && elapsedSince(lastNTPAttempt) > NTP_RETRY_INTERVAL) {
             tryNTPSync();
         }
+    } else if (!rtcInitialized && wifiConnected && wifiStationEnabled &&
+               (lastNTPSync > 0 || lastBrowserSyncMs > 0 || lastDS3231SyncEpoch > 0) &&
+               ESP.getFreeHeap() > MIN_HEAP_FOR_NTP &&
+               elapsedSince(lastNTPAttempt) > NTP_RETRY_INTERVAL) {
+        tryNTPSync();
     }  
     static unsigned long lastFSCheck = 0;
     if (elapsedSince(lastFSCheck) > 86400000UL) {
@@ -3379,7 +3379,6 @@ void setup() {
     lastDNSCheck = millis();
     lastDS3231Sync = millis();
     lastDeepHeal = millis();
-    lastFlashWearCheck = millis();
     lastConfigSave = millis();
     configDirtySince = millis();
     flashWriteHourStart = millis();    
@@ -3424,9 +3423,17 @@ void loop() {
             case SR_DNS_RECOVER:
                 selfRecoveryDNS();
                 break;
-            case SR_RTC_RECOVER:
-                selfRecoveryRTC();
+            case SR_RTC_RECOVER: {
+                static unsigned long lastRtcRecoverAttempt = 0;
+                if (lastRtcRecoverAttempt == 0 ||
+                    elapsedSince(lastRtcRecoverAttempt) >= 60000UL) {
+                    lastRtcRecoverAttempt = millis();
+                    selfRecoveryRTC();
+                } else {
+                    selfRecoveryState = SR_IDLE;
+                }
                 break;
+            }
             case SR_NETWORK_HEAL:
                 selfRecoveryNetworkHeal();
                 break;
@@ -3471,6 +3478,9 @@ void loop() {
         if (currentEpoch < EPOCH64_MIN_VALID || currentEpoch > EPOCH64_APP_MAX) {
             selfRecoveryState = SR_RTC_RECOVER;
         }
+    } else if (wifiStationEnabled &&
+               (lastNTPSync > 0 || lastBrowserSyncMs > 0 || lastDS3231SyncEpoch > 0)) {
+        selfRecoveryState = SR_RTC_RECOVER;
     }    
     proactiveMaintenance();
     gentleNetworkHealing();    
@@ -4360,11 +4370,16 @@ void handleGetSystem() {
     resp += "\"version\":" + String(EEPROM_VERSION) + ",";
     resp += "\"ds3231Present\":" + String(ds3231Present ? "true" : "false") + ",";
     if (ds3231Present) {
-        float temp = rtc.getTemperature();
-        if (isnan(temp) || !isfinite(temp)) {
+        static unsigned long lastTempRead = 0;
+        static float lastTempValue = NAN;
+        if (lastTempRead == 0 || elapsedSince(lastTempRead) >= 10000UL) {
+            lastTempRead = millis();
+            lastTempValue = rtc.getTemperature();
+        }
+        if (isnan(lastTempValue) || !isfinite(lastTempValue)) {
             resp += "\"ds3231Temp\":null";
         } else {
-            resp += "\"ds3231Temp\":" + String(temp, 1);
+            resp += "\"ds3231Temp\":" + String(lastTempValue, 1);
         }
     } else {
         resp += "\"ds3231Temp\":null";
