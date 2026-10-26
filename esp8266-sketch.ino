@@ -2458,7 +2458,7 @@ void selfRecoveryWifiReconnect() {
 }
 void selfRecoveryWebServer() {
     unsigned long now = millis();
-    if (now - lastWebServerRecovery < WEB_SERVER_RECOVERY_INTERVAL) {
+    if (elapsedSince(lastWebServerRecovery) < WEB_SERVER_RECOVERY_INTERVAL) {
         selfRecoveryState = SR_IDLE;
         return;
     }
@@ -2542,7 +2542,7 @@ void checkDNSHealth() {
 }
 void defragmentHeap() {
     unsigned long now = millis();
-    if (now - lastHeapDefrag < HEAP_DEFRAG_INTERVAL) return;
+    if (elapsedSince(lastHeapDefrag) < HEAP_DEFRAG_INTERVAL) return;
     lastHeapDefrag = now;    
     if (ESP.getFreeHeap() > 20480) return;    
     ESP.resetFreeContStack();    
@@ -2556,7 +2556,7 @@ void defragmentHeap() {
 }
 void manageConnections() {
     unsigned long now = millis();
-    if (now - lastConnectionCleanup < CONNECTION_CLEANUP_INTERVAL) return;
+    if (elapsedSince(lastConnectionCleanup) < CONNECTION_CLEANUP_INTERVAL) return;
     lastConnectionCleanup = now;    
     cleanupIdleConnections();    
 }
@@ -2581,14 +2581,14 @@ void checkFactoryResetButton() {
     if (currentState != lastButtonState) {
         lastDebounce = now;
     }    
-    if ((now - lastDebounce) > 50) {
+    if (elapsedSince(lastDebounce) > 50) {
         if (currentState == LOW && !isPressing) {
             isPressing = true;
             factoryResetPressStart = now;
             buttonHeld = true;
         }
         else if (currentState == HIGH && isPressing) {
-            unsigned long holdDuration = now - factoryResetPressStart;
+            unsigned long holdDuration = elapsedSince(factoryResetPressStart);
             if (holdDuration >= FACTORY_RESET_HOLD_MS) {
                 performFactoryReset();
             }
@@ -2597,7 +2597,7 @@ void checkFactoryResetButton() {
         }
     }    
     if (isPressing && !factoryResetInProgress) {
-        unsigned long holdTime = now - factoryResetPressStart;
+        unsigned long holdTime = elapsedSince(factoryResetPressStart);
         if (holdTime >= FACTORY_RESET_HOLD_MS) {
             if (!solidSet) {
                 digitalWrite(STATUS_LED_PIN, STATUS_LED_ACTIVE_LOW ? LOW : HIGH);
@@ -2607,7 +2607,7 @@ void checkFactoryResetButton() {
             solidSet = false;
             int blinkInterval = 500 - (holdTime / 11);
             if (blinkInterval < 50) blinkInterval = 50;            
-            if (now - lastFactoryResetBlink >= (unsigned long)blinkInterval) {
+            if (elapsedSince(lastFactoryResetBlink) >= (unsigned long)blinkInterval) {
                 lastFactoryResetBlink = now;
                 ledState = !ledState;
                 digitalWrite(STATUS_LED_PIN, 
@@ -2632,7 +2632,7 @@ void processFactoryReset() {
         case FR_IDLE:
             break;            
         case FR_INIT_LED:
-            if (now - frStepTimer >= 100) {
+            if (elapsedSince(frStepTimer) >= 100) {
                 frStepTimer = now;
                 digitalWrite(STATUS_LED_PIN, STATUS_LED_ACTIVE_LOW ? 
                     (factoryResetLEDStep % 2 == 0 ? LOW : HIGH) : 
@@ -2696,6 +2696,10 @@ void processFactoryReset() {
                 internalEpoch = 0;
                 lastNTPSync = 0;
                 lastNTPSyncEpoch = 0;
+                lastDS3231Sync = 0;
+                lastDS3231SyncEpoch = 0;
+                lastBrowserSyncMs = 0;
+                lastBrowserSyncEpoch = 0;
                 wifiStationEnabled = true;
                 if (ds3231Present) {
                     syncFromDS3231();
@@ -2780,7 +2784,7 @@ void processNTPState() {
 }
 void gentleNetworkHealing() {
     unsigned long now = millis();
-    if (now - lastGentleHealing < GENTLE_NETWORK_HEAL_INTERVAL) return;
+    if (elapsedSince(lastGentleHealing) < GENTLE_NETWORK_HEAL_INTERVAL) return;
     lastGentleHealing = now;    
     if (!wifiConnected && wifiStationEnabled && !networkHealingInProgress && strlen(sysConfig.sta_ssid) > 0) {
         networkHealingInProgress = true;
@@ -2800,7 +2804,7 @@ void processNetworkHealing() {
             whTimer = now;
             break;            
         case WH_CONNECTING:
-            if (now - whTimer >= 100) {
+            if (elapsedSince(whTimer) >= 100) {
                 WiFi.begin(sysConfig.sta_ssid, sysConfig.sta_password);
                 whState = WH_WAITING;
                 whTimer = now;
@@ -2812,7 +2816,7 @@ void processNetworkHealing() {
                 wifiConnected = true;
                 startMDNS();
                 whState = WH_IDLE;
-            } else if (now - whTimer >= 30000) {
+            } else if (elapsedSince(whTimer) >= 30000) {
                 networkHealingInProgress = false;
                 whState = WH_IDLE;
             }
@@ -2821,7 +2825,7 @@ void processNetworkHealing() {
 }
 void checkConnectionRateLimit() {
     unsigned long now = millis();
-    if (now - reconnectHourStart >= 3600000UL) {
+    if (elapsedSince(reconnectHourStart) >= 3600000UL) {
         reconnectCountThisHour = 0;
         reconnectHourStart = now;
     }
@@ -3053,7 +3057,7 @@ void processAPRestart() {
             aprStartTime = now;
             break;          
         case APR_RESTARTING:
-            if (now - aprStartTime >= AP_RESTART_DELAY) {
+            if (elapsedSince(aprStartTime) >= AP_RESTART_DELAY) {
                 uint8_t ch = extConfig.ap_channel;
                 if (ch < 1 || ch > 13) ch = 6;
                 uint8_t hidden = extConfig.ap_hidden ? 1 : 0;
@@ -3085,7 +3089,7 @@ void updateStatusLED() {
         digitalWrite(STATUS_LED_PIN, STATUS_LED_ACTIVE_LOW ? HIGH : LOW);
         return;
     }    
-    if (now - lastLedToggle >= interval) {
+    if (elapsedSince(lastLedToggle) >= interval) {
         lastLedToggle = now;
         ledState = !ledState;
         digitalWrite(STATUS_LED_PIN, 
@@ -3120,14 +3124,14 @@ void updateRelayPins() {
 }
 void proactiveMaintenance() {
     unsigned long now = millis();
-    if (now - lastProactiveMaintenance < PROACTIVE_MAINTENANCE_INTERVAL) return;
+    if (elapsedSince(lastProactiveMaintenance) < PROACTIVE_MAINTENANCE_INTERVAL) return;
     lastProactiveMaintenance = now;        
     if (ESP.getFreeHeap() < 10000) {
         selfRecoveryMemoryCleanup(); 
     }    
     if (wifiConnected && wifiStationEnabled && WiFi.RSSI() < -85) {
         static unsigned long lastWeakSignalRecovery = 0;
-        if (now - lastWeakSignalRecovery > 300000) {
+        if (elapsedSince(lastWeakSignalRecovery) > 300000) {
             WiFi.reconnect();
             lastWeakSignalRecovery = now;
         }
@@ -3395,7 +3399,7 @@ void loop() {
     yield();    
     (void)getUptimeMs64();
     unsigned long now = millis();    
-    if (now - lastWatchdogFeed >= WATCHDOG_FEED_INTERVAL) {
+    if (elapsedSince(lastWatchdogFeed) >= WATCHDOG_FEED_INTERVAL) {
         ESP.wdtFeed();
         lastWatchdogFeed = now;
     }    
@@ -3500,7 +3504,7 @@ void loop() {
             lastNTPSyncEpoch = 0;
             lastNTPAttempt = 0;
             ntpFailCount = 0;
-        } else if (now - wcsStart > WIFI_CONNECT_TIMEOUT) {
+        } else if (elapsedSince(wcsStart) > WIFI_CONNECT_TIMEOUT) {
             wcsState = WCS_IDLE;
             if (wifiReconnectAttempts >= MAX_RECONNECT) {
                 wifiGiveUpUntil = now + 300000UL;
@@ -3508,7 +3512,7 @@ void loop() {
             }
         }
     }
-    if (wifiStationEnabled && now - lastWiFiCheck >= WIFI_CHECK_INTERVAL) {
+    if (wifiStationEnabled && elapsedSince(lastWiFiCheck) >= WIFI_CHECK_INTERVAL) {
         lastWiFiCheck = now;
         bool connected = (WiFi.status() == WL_CONNECTED);
         if (wifiConnected && !connected) {
@@ -4130,7 +4134,7 @@ void handleWiFiScanResults() {
         server.send(429, "application/json", "{\"error\":\"Too many requests\"}");
         return;
     }    
-    if (scanInProgress && scanStartTime > 0 && (millis() - scanStartTime) > SCAN_TIMEOUT_MS) {
+    if (scanInProgress && scanStartTime > 0 && elapsedSince(scanStartTime) > SCAN_TIMEOUT_MS) {
         scanInProgress = false;
         scanResultCount = -1;
     }
