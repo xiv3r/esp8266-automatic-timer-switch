@@ -41,6 +41,15 @@ jobs:
         mv esp8266-sketch.ino esp8266-automatic-timer-switch.ino
         arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 --clean --output-dir firmware .
         mv firmware/*.ino.bin firmware/esp8266-firmware-0x0.bin
+
+    - name: Commit firmware binary
+      run: |
+        git config user.name  "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add -f *.bin
+        git commit -m "chore: update firmware binary [skip ci]" || echo "No changes to commit"
+        git pull --rebase --autostash origin main
+        git push
          
     - name: Determine release tag
       id: get_tag
@@ -51,7 +60,6 @@ jobs:
           TAG_NAME="esp8266"
         fi
         echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-
 
     - name: Upload files to existing release
       uses: softprops/action-gh-release@v3
