@@ -13,7 +13,7 @@
 
 ## Setups
 > Download and install 
-### ESP32 Win/Linux Drivers
+### ESP8266 Win/Linux Drivers
 - CH340G: https://sparks.gogo.co.nz/ch340.html
 - CP2102: https://www.silabs.com/software-and-tools/usb-to-uart-bridge-vcp-drivers?tab=downloads
 - FT232: https://ftdichip.com/wp-content/uploads/2025/03/CDM-v2.12.36.20-Universal-Driver-for-x64-WHQL-Certified.zip
