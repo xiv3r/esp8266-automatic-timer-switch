@@ -50,7 +50,8 @@ firmware: 0x0
 - Search your country `gmt offsets in seconds` and paste to the Time -> GMT Offset
 - e.g for negative gmt: `-28800`
 - e.g for positive gmt:  `28800`
-
+- https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/gmt-offsets.md
+  
 # Relay Name
 - Double tap relay name to edit
   
