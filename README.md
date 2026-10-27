@@ -11,6 +11,26 @@
 - NTPClient
 - [RTCLib](https://codeload.github.com/adafruit/RTClib/zip/refs/tags/1.14.1) 1.14.1
 
+## Setups
+> Download and install 
+### ESP32 Win/Linux Drivers
+- CH340G: https://sparks.gogo.co.nz/ch340.html
+- CP2102: https://www.silabs.com/software-and-tools/usb-to-uart-bridge-vcp-drivers?tab=downloads
+- FT232: https://ftdichip.com/wp-content/uploads/2025/03/CDM-v2.12.36.20-Universal-Driver-for-x64-WHQL-Certified.zip
+## Flasher
+### Android (otg)
+- https://play.google.com/store/apps/details?id=io.serialflow.espflash
+### Android Termux
+- https://github.com/7wp81x/Termux-ESP-Flasher
+### Windows
+- https://dl.espressif.com/public/flash_download_tool.zip
+### Linux
+```sh
+esptool --port <PORT> write_flash 0x0 esp32-dump-0x0.bin
+```
+### Win/Linux Browser
+- https://g3gg0.github.io/esp32_flasher/flasher.html
+
 # Installation
 - Download the firmware and flash
 ```
