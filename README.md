@@ -65,6 +65,9 @@ VCC → 3.3V
 GND → GND
 ```
 
+- Wemos D1 Mini
+<img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/wemos-diagram.png">
+- ESP8266
 <img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/esp8266-diagram.png">
 <img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/pic2.jpg">
 <img src="https://github.com/xiv3r/esp8266-automatic-timer-switch/blob/main/libraries/esp8266.jpg">
