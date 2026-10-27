@@ -45,6 +45,12 @@ firmware: 0x0
 > offline
 - Go to `192.168.4.1 -> time` tap sync browser to set the rtc time
 
+## Set the Time (country)
+> Set to your country time e.g for PH (UTC+8.0) 28800 seconds
+- Search your country `gmt offsets in seconds` and paste to the Time -> GMT Offset
+- e.g for negative gmt: `-28800`
+- e.g for positive gmt:  `28800`
+
 # Relay Name
 - Double tap relay name to edit
   
