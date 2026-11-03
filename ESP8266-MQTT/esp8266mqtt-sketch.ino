@@ -6228,4 +6228,3 @@ void handleFactoryReset() {
     server.send(200, "application/json", "{\"success\":true,\"message\":\"Factory reset initiated\"}");
     performFactoryReset();
 }
-
