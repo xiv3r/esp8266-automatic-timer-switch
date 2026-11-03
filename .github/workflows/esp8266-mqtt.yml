@@ -33,6 +33,7 @@ jobs:
         
         # Install libraries
         arduino-cli lib install "ArduinoJson"
+        arduino-cli lib install "PubSubClient"
         arduino-cli lib install "NTPClient"
         arduino-cli lib install "RTClib"
         
