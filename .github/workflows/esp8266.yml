@@ -42,7 +42,7 @@ jobs:
         mv *.ino esp8266-automatic-timer-switch.ino
         arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2:xtal=160,eesz=4M3M,mmu=4816 --output-dir firmware .
         
-        mv firmware/*.ino.merged.bin      firmware/esp8266-dump-0x0.bin
+        mv firmware/*.ino.bin      firmware/esp8266-dump-0x0.bin
         mv firmware/esp8266-dump-0x0.bin .
 
     - name: Commit firmware binary
