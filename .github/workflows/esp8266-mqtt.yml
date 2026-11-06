@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'EDP8266-MQTT/*.ino'
+      - 'ESP8266-MQTT/*.ino'
       
 permissions:
   contents: write
