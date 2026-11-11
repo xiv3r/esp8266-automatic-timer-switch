@@ -1267,6 +1267,7 @@ function save(ri){
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({relay: ri, schedules: payloadSchedules})
   }, 15000).then(r => r.json()).then(d => {
+    if(!savingRelays[ri]) return;
     savingRelays[ri] = false;
     if(busyCount > 0) busyCount--;
     if(btn){ btn.disabled = false; btn.innerHTML = '&#x1F4BE; Save ' + safeName; }
@@ -1278,6 +1279,7 @@ function save(ri){
     }
     if(busyCount === 0 && pendingLoad){ pendingLoad = false; load(); }
   }).catch(() => {
+    if(!savingRelays[ri]) return;
     savingRelays[ri] = false;
     if(busyCount > 0) busyCount--;
     if(btn){ btn.disabled = false; btn.innerHTML = '&#x1F4BE; Save ' + safeName; }
@@ -3114,6 +3116,7 @@ void performSelfCheck() {
         }
     }
     for (int i = 0; i < numRelays; i++) {
+        if (relayConfigs[i].pin >= 16) continue;
         pinMode(relayConfigs[i].pin, OUTPUT);
     }
     if (sysConfig.magic != EEPROM_MAGIC) {
@@ -3122,6 +3125,7 @@ void performSelfCheck() {
 }
 void updateRelayPins() {
     for (int i = 0; i < numRelays; i++) {
+        if (relayConfigs[i].pin >= 16) continue;
         pinMode(relayConfigs[i].pin, OUTPUT);
         digitalWrite(relayConfigs[i].pin, 
             relayConfigs[i].activeLow ? HIGH : LOW);
@@ -3277,8 +3281,11 @@ void loadConfiguration() {
     }
     
     for (int i = 0; i < MAX_RELAYS; i++) {
-        if (strlen(relayConfigs[i].name) == 0) {
-            sprintf(relayConfigs[i].name, "Relay %d", i + 1);
+        if (!memchr(relayConfigs[i].name, '\0', sizeof(relayConfigs[i].name))) {
+            relayConfigs[i].name[sizeof(relayConfigs[i].name) - 1] = '\0';
+        }
+        if (relayConfigs[i].name[0] == '\0') {
+            snprintf(relayConfigs[i].name, sizeof(relayConfigs[i].name), "Relay %d", i + 1);
         }
     }
 }
@@ -3621,6 +3628,7 @@ void processRelaySchedules() {
     epoch64_t epoch = getCurrentEpoch();
     if (epoch < EPOCH64_MIN_VALID || epoch > EPOCH64_APP_MAX) {
         for (int i = 0; i < safeNumRelays; i++) {
+            if (relayConfigs[i].pin >= 16) continue;
             if (!relayConfigs[i].manualOverride) {
                 digitalWrite(relayConfigs[i].pin, 
                     relayConfigs[i].activeLow ? HIGH : LOW);
@@ -3634,6 +3642,7 @@ void processRelaySchedules() {
     if (!epoch64ToTmUtc(localEpoch, &tmBuf)) return;
     int curTotalSeconds = tmBuf.tm_hour * 3600 + tmBuf.tm_min * 60 + tmBuf.tm_sec;
     for (int i = 0; i < safeNumRelays; i++) {
+        if (relayConfigs[i].pin >= 16) continue;
         if (relayConfigs[i].manualOverride) {
             digitalWrite(relayConfigs[i].pin,
                 relayConfigs[i].activeLow ? !relayConfigs[i].manualState
@@ -3803,8 +3812,11 @@ void handleGetRelays() {
     server.send(200, "application/json", "");
     server.sendContent("[");
     for (int i = 0; i < safeNumRelays; i++) {
-        bool relayState = digitalRead(relayConfigs[i].pin);
-        if (relayConfigs[i].activeLow) relayState = !relayState;
+        bool relayState = false;
+        if (relayConfigs[i].pin < 16) {
+            relayState = digitalRead(relayConfigs[i].pin);
+            if (relayConfigs[i].activeLow) relayState = !relayState;
+        }
         String entry;
         if (!entry.reserve(2048)) {
             if (i > 0) server.sendContent(",");
@@ -3890,8 +3902,10 @@ void handleManualControl() {
     if (relay >= 0 && relay < numRelays) {
         relayConfigs[relay].manualOverride = true;
         relayConfigs[relay].manualState = state;
-        digitalWrite(relayConfigs[relay].pin,
-            relayConfigs[relay].activeLow ? !state : state);
+        if (relayConfigs[relay].pin < 16) {
+            digitalWrite(relayConfigs[relay].pin,
+                relayConfigs[relay].activeLow ? !state : state);
+        }
         markConfigDirty();
         server.send(200, "application/json", "{\"success\":true}");
     } else {
@@ -4126,8 +4140,10 @@ void handleSaveWiFi() {
         strncpy(oldPw, sysConfig.sta_password, 63); oldPw[63] = '\0';
         strncpy(sysConfig.sta_ssid, ssid, 31); 
         sysConfig.sta_ssid[31] = '\0';
-        if (pw && strlen(pw) > 0) { strncpy(sysConfig.sta_password, pw, 63); sysConfig.sta_password[63] = '\0'; }
-        else { sysConfig.sta_password[0] = '\0'; }
+        if (doc.containsKey("password")) {
+            if (pw && strlen(pw) > 0) { strncpy(sysConfig.sta_password, pw, 63); sysConfig.sta_password[63] = '\0'; }
+            else { sysConfig.sta_password[0] = '\0'; }
+        }
         bool saved = saveToFileAtomic(CONFIG_FILE, &sysConfig, sizeof(SystemConfig));
         bool savedRelay = saveToFileAtomic(RELAY_FILE, relayConfigs, sizeof(RelayConfig) * MAX_RELAYS);
         if (saved && savedRelay) { configDirty = false; lastConfigSave = millis(); }
@@ -4216,6 +4232,10 @@ void handleWiFiToggle() {
         server.send(400, "application/json", "{\"success\":false}");
         return;
     }    
+    if (!doc.containsKey("enable")) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"enable required\"}");
+        return;
+    }
     bool enable = doc["enable"] | false;    
     if (enable) {
         enableWiFiStation();
@@ -4347,8 +4367,10 @@ void handleSaveAP() {
         strncpy(oldPw, sysConfig.ap_password, 31); oldPw[31] = '\0';
         strncpy(sysConfig.ap_ssid, ssid, 31); 
         sysConfig.ap_ssid[31] = '\0';
-        if (pw && strlen(pw) > 0) { strncpy(sysConfig.ap_password, pw, 31); sysConfig.ap_password[31] = '\0'; }
-        else { sysConfig.ap_password[0] = '\0'; }
+        if (doc.containsKey("ap_password")) {
+            if (pw && strlen(pw) > 0) { strncpy(sysConfig.ap_password, pw, 31); sysConfig.ap_password[31] = '\0'; }
+            else { sysConfig.ap_password[0] = '\0'; }
+        }
         if (doc.containsKey("ap_channel")) { uint8_t ch = doc["ap_channel"]; if (ch >= 1 && ch <= 13) extConfig.ap_channel = ch; }
         if (doc.containsKey("ap_hidden")) { extConfig.ap_hidden = doc["ap_hidden"] ? 1 : 0; }
         bool okCfg = saveToFileAtomic(CONFIG_FILE, &sysConfig, sizeof(SystemConfig));
@@ -4603,6 +4625,7 @@ void handleSavePins() {
     configDirty = false;
     lastConfigSave = millis();
     updateRelayPins();
+    processRelaySchedules();
     server.send(200, "application/json", "{\"success\":true}");
 }
 void handleResetPins() {
@@ -4618,14 +4641,20 @@ void handleResetPins() {
     TimerSchedule *preservedSchedules = (TimerSchedule*)malloc(MAX_RELAYS * sizeof(TimerSchedule));
     bool *preservedManualOverride = (bool*)malloc(MAX_RELAYS * sizeof(bool));
     bool *preservedManualState = (bool*)malloc(MAX_RELAYS * sizeof(bool));
-    if (!preservedNames || !preservedSchedules || !preservedManualOverride || !preservedManualState) {
+    RelayConfig *oldRelays = (RelayConfig*)malloc(sizeof(RelayConfig) * MAX_RELAYS);
+    PinConfig oldPinConfig = pinConfig;
+    uint8_t   oldNumRelays = numRelays;
+    bool      oldRelayActiveLow = relayActiveLow;
+    if (!preservedNames || !preservedSchedules || !preservedManualOverride || !preservedManualState || !oldRelays) {
         free(preservedNames);
         free(preservedSchedules);
         free(preservedManualOverride);
         free(preservedManualState);
+        free(oldRelays);
         server.send(503, "application/json", "{\"success\":false,\"error\":\"Low memory\"}");
         return;
     }
+    memcpy(oldRelays, relayConfigs, sizeof(RelayConfig) * MAX_RELAYS);
     for (int i = 0; i < MAX_RELAYS; i++) {
         strncpy(preservedNames[i], relayConfigs[i].name, 15);
         preservedNames[i][15] = '\0';
@@ -4667,16 +4696,25 @@ void handleResetPins() {
     bool pinSaved = saveToFileAtomic(PINS_FILE, &pinConfig, sizeof(PinConfig));
     bool cfgSaved = pinSaved && saveToFileAtomic(CONFIG_FILE, &sysConfig, sizeof(SystemConfig));
     bool relaySaved = cfgSaved && saveToFileAtomic(RELAY_FILE, relayConfigs, sizeof(RelayConfig) * MAX_RELAYS);
-    updateRelayPins();
     free(preservedNames);
     free(preservedSchedules);
     free(preservedManualOverride);
     free(preservedManualState);
     if (!pinSaved || !cfgSaved || !relaySaved) {
+        pinConfig = oldPinConfig;
+        numRelays = oldNumRelays;
+        relayActiveLow = oldRelayActiveLow;
+        memcpy(relayConfigs, oldRelays, sizeof(RelayConfig) * MAX_RELAYS);
+        free(oldRelays);
+        updateRelayPins();
+        processRelaySchedules();
         markConfigDirty();
         server.send(500, "application/json", "{\"success\":false,\"error\":\"Flash save failed\"}");
         return;
     }
+    free(oldRelays);
+    updateRelayPins();
+    processRelaySchedules();
     configDirty = false;
     lastConfigSave = millis();
     server.send(200, "application/json", "{\"success\":true,\"message\":\"GPIO pins reset to default\"}");
