@@ -350,6 +350,8 @@ uint8_t flashWriteCounter = 0;
 unsigned long flashWriteHourStart = 0;
 bool pendingWiFiReconnect = false;
 unsigned long pendingWiFiReconnectAt = 0;
+bool pendingWiFiBegin = false;
+unsigned long pendingWiFiBeginAt = 0;
 bool pendingAPRestart = false;
 unsigned long pendingAPRestartAt = 0;
 bool pendingStationDisable = false;
@@ -2681,7 +2683,7 @@ void processFactoryReset() {
             frState = FR_SETUP_AP;
             break;            
         case FR_SETUP_AP:
-            if (now - frStepTimer >= 200) {
+            if (elapsedSince(frStepTimer) >= 200) {
                 WiFi.mode(WIFI_AP);
                 uint8_t ch = extConfig.ap_channel;
                 if (ch < 1 || ch > 13) ch = 6;
@@ -2715,14 +2717,14 @@ void processFactoryReset() {
             }
             break;            
         case FR_DNS_RESTART:
-            if (now - frStepTimer >= 50) {
+            if (elapsedSince(frStepTimer) >= 50) {
                 dnsServer.stop();
                 frStepTimer = now;
                 frState = FR_WEB_RESTART;
             }
             break;            
         case FR_WEB_RESTART:
-            if (now - frStepTimer >= 100) {
+            if (elapsedSince(frStepTimer) >= 100) {
                 dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
                 server.stop();
                 server.close();
@@ -2731,7 +2733,7 @@ void processFactoryReset() {
             }
             break;            
         case FR_COMPLETE:
-            if (now - frStepTimer >= 50) {
+            if (elapsedSince(frStepTimer) >= 50) {
                 setupWebServer();
                 factoryResetInProgress = false;
                 frState = FR_IDLE;
@@ -2852,14 +2854,11 @@ void loadFromFile(const char* path, void* data, size_t size) {
     File f = LittleFS.open(path, "r");
     if (!f) return;   
     size_t fileSize = f.size();
-    if (fileSize > size) {
-        f.close();
-        return;
-    }    
-    if (fileSize < size) {
-        memset((uint8_t*)data + fileSize, 0, size - fileSize);
+    size_t readSize = (fileSize < size) ? fileSize : size;
+    memset((uint8_t*)data, 0, size);
+    if (readSize > 0) {
+        f.read((uint8_t*)data, readSize);
     }
-    size_t bytesRead = f.read((uint8_t*)data, min(size, fileSize));
     f.close();
 }
 bool saveToFileAtomic(const char* path, const void* data, size_t size) {
@@ -3044,8 +3043,8 @@ void beginWiFiConnect() {
     persistentDisconnectTime = 0;    
     wifiReconnectAttempts++;
     WiFi.disconnect(false);    
-    delay(100);
-    WiFi.begin(sysConfig.sta_ssid, sysConfig.sta_password);
+    pendingWiFiBegin = true;
+    pendingWiFiBeginAt = millis() - 700UL;
     wcsState = WCS_PENDING;
     wcsStart = millis();
 }
@@ -3467,6 +3466,12 @@ void loop() {
         pendingAPRestart = false;
         restartAP();
     }
+    if (pendingWiFiBegin && elapsedSince(pendingWiFiBeginAt) >= 800UL) {
+        pendingWiFiBegin = false;
+        if (wifiStationEnabled && strlen(sysConfig.sta_ssid) > 0 && WiFi.status() != WL_CONNECTED) {
+            WiFi.begin(sysConfig.sta_ssid, sysConfig.sta_password);
+        }
+    }
     if (pendingStationDisable && elapsedSince(pendingStationDisableAt) >= 500UL) {
         pendingStationDisable = false;
         disableWiFiStation();
@@ -3802,6 +3807,10 @@ void handleGetRelays() {
         if (relayConfigs[i].activeLow) relayState = !relayState;
         String entry;
         if (!entry.reserve(2048)) {
+            if (i > 0) server.sendContent(",");
+            server.sendContent("{\"name\":\"Relay ");
+            server.sendContent(String(i + 1));
+            server.sendContent("\",\"state\":false,\"manual\":false,\"schedules\":[]}");
             server.sendContent("]");
             server.sendContent("");
             return;
@@ -4090,12 +4099,24 @@ void handleSaveWiFi() {
     if (err) { server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}"); return; }
     const char* ssid = doc["ssid"];
     const char* pw = doc["password"];
-    if (!ssid || strlen(ssid) == 0) {
+    if (!ssid) {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"SSID required\"}");
         return;
     }
-    if (strlen(ssid) > 31) {
-        server.send(400, "application/json", "{\"success\":false,\"error\":\"SSID too long (max 31)\"}");
+    char ssidTrimmed[32];
+    {
+        const char* s = ssid;
+        while (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n') s++;
+        const char* e = s + strlen(s);
+        while (e > s && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r' || e[-1] == '\n')) e--;
+        size_t n = (size_t)(e - s);
+        if (n > 31) n = 31;
+        memcpy(ssidTrimmed, s, n);
+        ssidTrimmed[n] = '\0';
+    }
+    ssid = ssidTrimmed;
+    if (strlen(ssid) == 0) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"SSID required\"}");
         return;
     }
     if (ssid && strlen(ssid) > 0 && strlen(ssid) < 32) {
@@ -4278,9 +4299,21 @@ void handleSyncNTP() {
         server.send(429, "application/json", "{\"success\":false}");
         return;
     }    
-    if (!wifiConnected || !wifiStationEnabled) { server.send(400, "application/json", "{\"success\":false}"); return; }
+    if (!wifiConnected || !wifiStationEnabled) { server.send(400, "application/json", "{\"success\":false,\"error\":\"WiFi station not connected\"}"); return; }
+    if (ntpState != NTP_IDLE) { server.send(409, "application/json", "{\"success\":false,\"error\":\"NTP sync already in progress\"}"); return; }
+    if (ESP.getFreeHeap() < MIN_HEAP_FOR_NTP) {
+        selfRecoveryMemoryCleanup();
+        if (ESP.getFreeHeap() < MIN_HEAP_FOR_NTP) {
+            server.send(503, "application/json", "{\"success\":false,\"error\":\"Low memory, retry shortly\"}");
+            return;
+        }
+    }
     tryNTPSync();
-    server.send(200, "application/json", "{\"success\":true}");
+    if (ntpState == NTP_REQUESTING || ntpState == NTP_PROCESSING) {
+        server.send(200, "application/json", "{\"success\":true}");
+    } else {
+        server.send(503, "application/json", "{\"success\":false,\"error\":\"NTP sync unavailable\"}");
+    }
 }
 void handleGetAP() {
     if (!checkApiRateLimit()) {
@@ -4560,6 +4593,8 @@ void handleSavePins() {
         relayActiveLow = oldRelayActiveLow;
         memcpy(relayConfigs, oldRelays, sizeof(RelayConfig) * MAX_RELAYS);
         free(oldRelays);
+        updateRelayPins();
+        processRelaySchedules();
         markConfigDirty();
         server.send(500, "application/json", "{\"success\":false,\"error\":\"Flash save failed\"}");
         return;
@@ -4575,6 +4610,10 @@ void handleResetPins() {
         server.send(429, "application/json", "{\"success\":false,\"error\":\"Too many requests\"}");
         return;
     }    
+    if (ESP.getFreeHeap() < 3072) {
+        server.send(503, "application/json", "{\"success\":false,\"error\":\"Low memory, retry shortly\"}");
+        return;
+    }
     char (*preservedNames)[16] = (char (*)[16])malloc(MAX_RELAYS * 16);
     TimerSchedule *preservedSchedules = (TimerSchedule*)malloc(MAX_RELAYS * sizeof(TimerSchedule));
     bool *preservedManualOverride = (bool*)malloc(MAX_RELAYS * sizeof(bool));
@@ -4685,5 +4724,3 @@ void handleFactoryReset() {
     server.send(200, "application/json", "{\"success\":true,\"message\":\"Factory reset initiated\"}");
     performFactoryReset();
 }
-
-
