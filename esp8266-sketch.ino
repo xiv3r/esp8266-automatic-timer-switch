@@ -25,9 +25,9 @@
 typedef int64_t epoch64_t;
 static const epoch64_t EPOCH64_MIN_VALID = 1000000000LL;
 static const epoch64_t EPOCH64_APP_MIN   = 1577836800LL;
-static const epoch64_t EPOCH64_APP_MAX   = 4102444799LL;
+static const epoch64_t EPOCH64_APP_MAX   = 8204544000LL;
 static const epoch64_t EPOCH64_RTC_MIN   = 1700000000LL;
-static const epoch64_t EPOCH64_NTP_MAX   = 4102444800LL;
+static const epoch64_t EPOCH64_NTP_MAX   = 8204544000LL;
 static inline bool epoch64IsValid(epoch64_t v) {
     return (v >= EPOCH64_MIN_VALID && v <= EPOCH64_APP_MAX);
 }
@@ -143,6 +143,7 @@ bool factoryResetInProgress = false;
 uint8_t factoryResetLEDStep = 0;
 unsigned long lastFactoryResetBlink = 0;
 bool          buttonHeld = false;
+bool          factoryResetJustCompleted = false;
 
 // =============================================================================
 //  Non-blocking state machine enums
@@ -301,13 +302,17 @@ PinConfig    pinConfig;
 RelayConfig  relayConfigs[MAX_RELAYS];
 epoch64_t     internalEpoch            = 0;
 unsigned long internalMillisAtLastSync = 0;
+uint64_t      internalSyncUptime64     = 0;
 float         driftCompensation        = 1.0f;
 bool          rtcInitialized           = false;
 uint8_t       ntpServerIndex  = 0;
 uint8_t       ntpFailCount    = 0;
 unsigned long lastNTPSync     = 0;
 unsigned long lastNTPAttempt  = 0;
-epoch64_t     lastNTPSyncEpoch = 0;    
+epoch64_t     lastNTPSyncEpoch = 0;
+uint64_t      lastNTPSyncUptime64     = 0;
+uint64_t      lastBrowserSyncUptime64 = 0;
+uint64_t      lastDS3231SyncUptime64  = 0;
 bool          wifiConnected         = false;
 bool          mdnsStarted           = false;
 unsigned long lastWiFiCheck         = 0;
@@ -356,6 +361,9 @@ bool pendingAPRestart = false;
 unsigned long pendingAPRestartAt = 0;
 bool pendingStationDisable = false;
 unsigned long pendingStationDisableAt = 0;
+bool pendingStationEnable = false;
+unsigned long pendingStationEnableAt = 0;
+bool wifiStationApplied = false;
 bool wifiStationEnabled = true;
 
 // =============================================================================
@@ -447,7 +455,7 @@ inline bool checkPageRateLimit() {
 }
 inline bool checkFlashWriteRate() {
     unsigned long now = millis();
-    if (now - flashWriteHourStart >= 3600000UL) {
+    if (elapsedSince(flashWriteHourStart) >= 3600000UL) {
         flashWriteCounter = 0;
         flashWriteHourStart = now;
     }
@@ -2175,6 +2183,7 @@ void initDS3231() {
         if (rtc.lostPower()) {
             rtcInitialized = false;
             internalEpoch = 0;
+            internalSyncUptime64 = getUptimeMs64();
             rtc.adjust(DateTime((uint32_t)EPOCH64_APP_MIN));
         } else {
             syncFromDS3231();
@@ -2200,8 +2209,18 @@ void syncFromDS3231() {
     if (elapsedSince(lastHealthProbe) >= 600000UL) {
         lastHealthProbe = millis();
         if (rtc.lostPower()) {
-            rtcInitialized = false;
-            internalEpoch = 0;
+            uint64_t now64 = getUptimeMs64();
+            bool internalFresh = false;
+            if (rtcInitialized && internalEpoch > 0 &&
+                internalSyncUptime64 > 0 && now64 > internalSyncUptime64 &&
+                (now64 - internalSyncUptime64) < 86400000ULL) {
+                internalFresh = true;
+            }
+            if (!internalFresh) {
+                rtcInitialized = false;
+                internalEpoch = 0;
+                internalSyncUptime64 = now64;
+            }
             return;
         }
     }
@@ -2225,9 +2244,11 @@ void syncFromDS3231() {
     }    
     internalEpoch = ds3231Epoch;
     internalMillisAtLastSync = nowMs;
+    internalSyncUptime64 = getUptimeMs64();
     rtcInitialized = true;
     lastDS3231SyncEpoch = ds3231Epoch;
     lastDS3231Sync = nowMs;
+    lastDS3231SyncUptime64 = getUptimeMs64();
 }
 void syncToDS3231(epoch64_t epoch) {
     if (!ds3231Present) return;
@@ -2299,18 +2320,13 @@ void enableWiFiStation() {
     sysConfig.wifi_station_enabled = true;
     markConfigDirty();    
     if (strlen(sysConfig.sta_ssid) > 0) {
-        WiFi.mode(WIFI_AP_STA);
-        WiFi.begin(sysConfig.sta_ssid, sysConfig.sta_password);
-        wcsState = WCS_PENDING;
-        wcsStart = millis();
-        wifiReconnectAttempts = 0;
-        reconnectCountThisHour = 0;
-        wifiGiveUpUntil = 0;
+        pendingStationEnable = true;
+        pendingStationEnableAt = millis();
     }
 }
 void disableWiFiStation() {
-    if (!wifiStationEnabled) return;    
-    wifiStationEnabled = false;
+    if (!wifiStationApplied) return;    
+    wifiStationApplied = false;
     sysConfig.wifi_station_enabled = false;
     wifiConnected = false;
     mdnsStarted = false;
@@ -2494,6 +2510,7 @@ void selfRecoveryRTC() {
     }
     if (!rtcInitialized && internalEpoch > 0) {
         internalMillisAtLastSync = millis();
+        internalSyncUptime64 = getUptimeMs64();
     }
     ntpFailCount = 0;
     selfRecoveryState = SR_IDLE;
@@ -2572,7 +2589,10 @@ void manageConnections() {
 }
 void cleanupIdleConnections() {
     if (ESP.getFreeHeap() < 10240) {
-        server.client().stop();
+        WiFiClient c = server.client();
+        if (!c.connected()) {
+            c.stop();
+        }
         delay(10);
     }
 }
@@ -2585,7 +2605,17 @@ void checkFactoryResetButton() {
     static bool lastButtonState = HIGH;
     static bool isPressing = false;    
     static bool solidSet = false;
-    if (factoryResetInProgress) return;    
+    if (factoryResetInProgress) return;
+    if (factoryResetJustCompleted) {
+        if (digitalRead(FACTORY_RESET_PIN) == HIGH) {
+            factoryResetJustCompleted = false;
+            isPressing = false;
+            solidSet = false;
+            buttonHeld = false;
+        }
+        lastButtonState = digitalRead(FACTORY_RESET_PIN);
+        return;
+    }
     bool currentState = digitalRead(FACTORY_RESET_PIN);
     unsigned long now = millis();    
     if (currentState != lastButtonState) {
@@ -2704,13 +2734,18 @@ void processFactoryReset() {
                 ntpFailCount = 0;
                 rtcInitialized = false;
                 internalEpoch = 0;
+                internalSyncUptime64 = getUptimeMs64();
                 lastNTPSync = 0;
                 lastNTPSyncEpoch = 0;
+                lastNTPSyncUptime64 = 0;
                 lastDS3231Sync = 0;
                 lastDS3231SyncEpoch = 0;
+                lastDS3231SyncUptime64 = 0;
                 lastBrowserSyncMs = 0;
                 lastBrowserSyncEpoch = 0;
+                lastBrowserSyncUptime64 = 0;
                 wifiStationEnabled = true;
+                wifiStationApplied = false;
                 if (ds3231Present) {
                     syncFromDS3231();
                 }            
@@ -2738,6 +2773,7 @@ void processFactoryReset() {
             if (elapsedSince(frStepTimer) >= 50) {
                 setupWebServer();
                 factoryResetInProgress = false;
+                factoryResetJustCompleted = true;
                 frState = FR_IDLE;
             }
             break;
@@ -2921,6 +2957,12 @@ void flushConfigIfNeeded() {
     if (ESP.getFreeHeap() < MIN_HEAP_FOR_SAVE) {
         return;
     }
+    {
+        epoch64_t nowEp = getCurrentEpoch();
+        if (nowEp > EPOCH64_MIN_VALID && nowEp < EPOCH64_APP_MAX) {
+            sysConfigSetLastRtcEpoch(nowEp);
+        }
+    }
     bool rtcSaved = saveToFileAtomic(CONFIG_FILE, &sysConfig, sizeof(SystemConfig));
     bool relaySaved = saveToFileAtomic(RELAY_FILE, relayConfigs, sizeof(RelayConfig) * MAX_RELAYS);    
     if (rtcSaved && relaySaved) {
@@ -2929,16 +2971,20 @@ void flushConfigIfNeeded() {
     }
 }
 epoch64_t getCurrentEpoch() {
-    if (!rtcInitialized || internalEpoch == 0) return 0;    
-    unsigned long elapsed = elapsedSince(internalMillisAtLastSync);
-    double elapsedSeconds;    
-    elapsedSeconds = (double)elapsed * driftCompensation / 1000.0;    
-    epoch64_t result = internalEpoch + (epoch64_t)elapsedSeconds;    
-    return result;
+    if (!rtcInitialized || internalEpoch == 0) return 0;
+    uint64_t now64 = getUptimeMs64();
+    if (now64 < internalSyncUptime64) return internalEpoch;
+    uint64_t elapsedMs = now64 - internalSyncUptime64;
+    double elapsedSeconds = (double)elapsedMs * driftCompensation / 1000.0;
+    return internalEpoch + (epoch64_t)elapsedSeconds;
 }
 void syncInternalRTC() {
     unsigned long ntpRaw = timeClient.getEpochTime();
     epoch64_t ntpEpoch = (epoch64_t)ntpRaw;
+    if (rtcInitialized && internalEpoch > 2000000000LL && ntpEpoch < 1000000000LL) {
+        epoch64_t candidate = ntpEpoch + 4294967296LL;
+        if (candidate <= EPOCH64_APP_MAX) ntpEpoch = candidate;
+    }
     if (ntpEpoch < EPOCH64_MIN_VALID) return;
     unsigned long nowMs = millis();    
     if (rtcInitialized && internalEpoch > 0) {
@@ -2952,9 +2998,11 @@ void syncInternalRTC() {
     }    
     internalEpoch = ntpEpoch;
     internalMillisAtLastSync = nowMs;
+    internalSyncUptime64 = getUptimeMs64();
     rtcInitialized = true;
     lastNTPSync = nowMs;
     lastNTPSyncEpoch = ntpEpoch;
+    lastNTPSyncUptime64 = getUptimeMs64();
     ntpFailCount = 0;
     saveRTCState();
     syncToDS3231(ntpEpoch);
@@ -2969,9 +3017,12 @@ void syncInternalRTCFromBrowser(epoch64_t browserEpoch) {
     }    
     internalEpoch = browserEpoch;
     internalMillisAtLastSync = nowMs;
+    internalSyncUptime64 = getUptimeMs64();
     rtcInitialized = true;
     lastBrowserSyncEpoch = browserEpoch;
     lastBrowserSyncMs = nowMs;
+    lastBrowserSyncUptime64 = getUptimeMs64();
+    lastNTPSyncUptime64 = getUptimeMs64();
     lastNTPSync = nowMs;
     lastNTPSyncEpoch = browserEpoch;
     lastNTPAttempt = nowMs;
@@ -3014,6 +3065,7 @@ void loadRTCState() {
         if (saved > EPOCH64_MIN_VALID && saved < EPOCH64_APP_MAX) {
             internalEpoch = saved;
             internalMillisAtLastSync = millis();
+            internalSyncUptime64 = getUptimeMs64();
             rtcInitialized = true;
         }
     }
@@ -3116,7 +3168,7 @@ void performSelfCheck() {
         }
     }
     for (int i = 0; i < numRelays; i++) {
-        if (relayConfigs[i].pin >= 16) continue;
+        if (relayConfigs[i].pin == 0xFF) continue;
         pinMode(relayConfigs[i].pin, OUTPUT);
     }
     if (sysConfig.magic != EEPROM_MAGIC) {
@@ -3125,7 +3177,7 @@ void performSelfCheck() {
 }
 void updateRelayPins() {
     for (int i = 0; i < numRelays; i++) {
-        if (relayConfigs[i].pin >= 16) continue;
+        if (relayConfigs[i].pin == 0xFF) continue;
         pinMode(relayConfigs[i].pin, OUTPUT);
         digitalWrite(relayConfigs[i].pin, 
             relayConfigs[i].activeLow ? HIGH : LOW);
@@ -3146,8 +3198,10 @@ void proactiveMaintenance() {
         }
     }    
     if (rtcInitialized && wifiConnected && wifiStationEnabled) {
-        unsigned long timeSinceSync = (lastNTPSync > 0) ? elapsedSince(lastNTPSync) : 0;
-        if (timeSinceSync > 3600000UL && elapsedSince(lastNTPAttempt) > NTP_RETRY_INTERVAL) {
+        uint64_t now64pm = getUptimeMs64();
+        uint64_t timeSinceSync = (lastNTPSyncUptime64 > 0 && now64pm > lastNTPSyncUptime64)
+            ? (now64pm - lastNTPSyncUptime64) : 0;
+        if (timeSinceSync > 3600000ULL && elapsedSince(lastNTPAttempt) > NTP_RETRY_INTERVAL) {
             tryNTPSync();
         }
     } else if (!rtcInitialized && wifiConnected && wifiStationEnabled &&
@@ -3162,6 +3216,15 @@ void proactiveMaintenance() {
             loadConfiguration();
         }
         lastFSCheck = now;
+    }
+    static unsigned long lastEpochPersist = 0;
+    if (rtcInitialized && elapsedSince(lastEpochPersist) > 3600000UL) {
+        epoch64_t nowEp = getCurrentEpoch();
+        if (nowEp > EPOCH64_MIN_VALID && nowEp < EPOCH64_APP_MAX) {
+            sysConfigSetLastRtcEpoch(nowEp);
+            markConfigDirty();
+        }
+        lastEpochPersist = now;
     }
     if (elapsedSince(lastDNSRestart) > 3600000UL) {
         selfRecoveryDNS(); 
@@ -3216,6 +3279,11 @@ void initDefaults() {
                 relayConfigs[i].schedule.monthMask[s] = 0;
                 relayConfigs[i].schedule.enabled[s] = false;
             }
+        } else {
+            relayConfigs[i].pin = 0xFF;
+            relayConfigs[i].activeLow = true;
+            snprintf(relayConfigs[i].name, sizeof(relayConfigs[i].name),
+                     "Relay %d", i + 1);
         }
     }    
     saveConfiguration();
@@ -3237,6 +3305,39 @@ void loadConfiguration() {
     }
     sysConfig.version = EEPROM_VERSION;
     loadFromFile(RELAY_FILE, relayConfigs, sizeof(RelayConfig) * MAX_RELAYS);
+    
+    {
+        static const uint8_t VP[] = {16, 14, 12, 13, 3, 1};
+        bool used[6] = {false,false,false,false,false,false};
+        bool corrupt = false;
+        int validCount = 0;
+        for (int i = 0; i < MAX_RELAYS; i++) {
+            uint8_t p = relayConfigs[i].pin;
+            if (p == 0xFF) continue;
+            bool knownPin = false;
+            for (uint8_t k = 0; k < 6; k++) {
+                if (VP[k] == p) {
+                    if (used[k]) { corrupt = true; break; }
+                    used[k] = true;
+                    knownPin = true;
+                    break;
+                }
+            }
+            if (!knownPin) { corrupt = true; break; }
+            validCount++;
+        }
+        if (corrupt || validCount == 0) {
+            String bakPath = String(RELAY_FILE) + ".bak";
+            if (LittleFS.exists(bakPath)) {
+                File bf = LittleFS.open(bakPath, "r");
+                if (bf && bf.size() == sizeof(RelayConfig) * MAX_RELAYS) {
+                    memset(relayConfigs, 0, sizeof(relayConfigs));
+                    bf.read((uint8_t*)relayConfigs, sizeof(RelayConfig) * MAX_RELAYS);
+                }
+                if (bf) bf.close();
+            }
+        }
+    }
     
     for (int i = 0; i < MAX_RELAYS; i++) {
         for (int s = 0; s < 8; s++) {
@@ -3282,7 +3383,9 @@ void loadConfiguration() {
     
     for (int i = 0; i < MAX_RELAYS; i++) {
         if (!memchr(relayConfigs[i].name, '\0', sizeof(relayConfigs[i].name))) {
-            relayConfigs[i].name[sizeof(relayConfigs[i].name) - 1] = '\0';
+            size_t n = sizeof(relayConfigs[i].name) - 1;
+            while (n > 0 && ((uint8_t)relayConfigs[i].name[n] & 0xC0) == 0x80) n--;
+            relayConfigs[i].name[n] = '\0';
         }
         if (relayConfigs[i].name[0] == '\0') {
             snprintf(relayConfigs[i].name, sizeof(relayConfigs[i].name), "Relay %d", i + 1);
@@ -3327,6 +3430,9 @@ void loadPinConfig() {
             relayConfigs[i].pin = defaultPins[i];
             relayConfigs[i].activeLow = true;
         }
+        for (int i = 6; i < MAX_RELAYS; i++) {
+            relayConfigs[i].pin = 0xFF;
+        }
         saveConfiguration();
         return;
     }    
@@ -3358,8 +3464,10 @@ void setup() {
     loadRTCState();
     updateRelayPins();    
     wifiStationEnabled = sysConfig.wifi_station_enabled;    
+    wifiStationApplied = false;
     if (strlen(sysConfig.sta_ssid) > 0 && wifiStationEnabled) {
         WiFi.mode(WIFI_AP_STA);
+        wifiStationApplied = true;
         WiFi.setAutoReconnect(false);
         WiFi.begin(sysConfig.sta_ssid, sysConfig.sta_password);
         wcsState = WCS_PENDING;
@@ -3481,13 +3589,30 @@ void loop() {
     }
     if (pendingStationDisable && elapsedSince(pendingStationDisableAt) >= 500UL) {
         pendingStationDisable = false;
+        pendingStationEnable = false;
         disableWiFiStation();
     }
+    if (pendingStationEnable && !pendingStationDisable && wifiStationEnabled &&
+        strlen(sysConfig.sta_ssid) > 0 && elapsedSince(pendingStationEnableAt) >= 500UL) {
+        pendingStationEnable = false;
+        WiFi.mode(WIFI_AP_STA);
+        if (WiFi.status() != WL_CONNECTED) {
+            WiFi.begin(sysConfig.sta_ssid, sysConfig.sta_password);
+        }
+        wifiStationApplied = true;
+        wcsState = WCS_PENDING;
+        wcsStart = millis();
+        wifiReconnectAttempts = 0;
+        reconnectCountThisHour = 0;
+        wifiGiveUpUntil = 0;
+    }
     updateStatusLED();    
-    if (wifiStationEnabled && wifiConnected && WiFi.status() != WL_CONNECTED) {
+    if (wifiStationEnabled && wifiConnected && WiFi.status() != WL_CONNECTED && wcsState == WCS_IDLE) {
         if (wifiReconnectAttempts < 3) {
             WiFi.reconnect();
             wifiReconnectAttempts++;
+            wcsState = WCS_PENDING;
+            wcsStart = millis();
         } else {
             selfRecoveryState = SR_WIFI_RECONNECT;
         }
@@ -3574,10 +3699,14 @@ void loop() {
         } else if (ntpFailCount > 0 && elapsedSince(lastNTPAttempt) >= NTP_RETRY_INTERVAL) {
             doSync = true;
         }       
-        if (!doSync && lastNTPSync > 0 && elapsedSince(lastNTPSync) > 86400000UL &&
-            elapsedSince(lastNTPAttempt) >= NTP_RETRY_INTERVAL) {
-            doSync = true;
-        }        
+        if (!doSync && lastNTPSyncUptime64 > 0) {
+            uint64_t now64 = getUptimeMs64();
+            if (now64 > lastNTPSyncUptime64 &&
+                (now64 - lastNTPSyncUptime64) > 86400000ULL &&
+                elapsedSince(lastNTPAttempt) >= NTP_RETRY_INTERVAL) {
+                doSync = true;
+            }
+        }
         if (doSync) {
             tryNTPSync();
         }
@@ -3628,7 +3757,7 @@ void processRelaySchedules() {
     epoch64_t epoch = getCurrentEpoch();
     if (epoch < EPOCH64_MIN_VALID || epoch > EPOCH64_APP_MAX) {
         for (int i = 0; i < safeNumRelays; i++) {
-            if (relayConfigs[i].pin >= 16) continue;
+            if (relayConfigs[i].pin == 0xFF) continue;
             if (!relayConfigs[i].manualOverride) {
                 digitalWrite(relayConfigs[i].pin, 
                     relayConfigs[i].activeLow ? HIGH : LOW);
@@ -3642,7 +3771,7 @@ void processRelaySchedules() {
     if (!epoch64ToTmUtc(localEpoch, &tmBuf)) return;
     int curTotalSeconds = tmBuf.tm_hour * 3600 + tmBuf.tm_min * 60 + tmBuf.tm_sec;
     for (int i = 0; i < safeNumRelays; i++) {
-        if (relayConfigs[i].pin >= 16) continue;
+        if (relayConfigs[i].pin == 0xFF) continue;
         if (relayConfigs[i].manualOverride) {
             digitalWrite(relayConfigs[i].pin,
                 relayConfigs[i].activeLow ? !relayConfigs[i].manualState
@@ -3807,24 +3936,26 @@ void handleGetRelays() {
         server.send(503, "application/json", "{\"error\":\"Low memory, retry shortly\"}");
         return;
     }
+    {
+        String probe;
+        if (!probe.reserve(2048)) {
+            server.send(503, "application/json", "{\"error\":\"Low heap fragmentation, retry shortly\"}");
+            return;
+        }
+        probe = "";
+    }
     int safeNumRelays = (numRelays > MAX_RELAYS) ? MAX_RELAYS : numRelays;
     server.setContentLength(CONTENT_LENGTH_UNKNOWN);
     server.send(200, "application/json", "");
     server.sendContent("[");
     for (int i = 0; i < safeNumRelays; i++) {
         bool relayState = false;
-        if (relayConfigs[i].pin < 16) {
+        if (relayConfigs[i].pin != 0xFF) {
             relayState = digitalRead(relayConfigs[i].pin);
             if (relayConfigs[i].activeLow) relayState = !relayState;
         }
         String entry;
         if (!entry.reserve(2048)) {
-            if (i > 0) server.sendContent(",");
-            server.sendContent("{\"name\":\"Relay ");
-            server.sendContent(String(i + 1));
-            server.sendContent("\",\"state\":false,\"manual\":false,\"schedules\":[]}");
-            server.sendContent("]");
-            server.sendContent("");
             return;
         }
         if (i > 0) entry += ",";
@@ -3874,6 +4005,7 @@ void handleSaveRelayName() {
     if (relay >= 0 && relay < numRelays && name && strlen(name) > 0) {
         char trimmed[16];
         size_t n = strnlen(name, 15);
+        while (n > 0 && ((uint8_t)name[n] & 0xC0) == 0x80) n--;
         memcpy(trimmed, name, n);
         trimmed[n] = '\0';
         bool hasContent = false;
@@ -3902,7 +4034,7 @@ void handleManualControl() {
     if (relay >= 0 && relay < numRelays) {
         relayConfigs[relay].manualOverride = true;
         relayConfigs[relay].manualState = state;
-        if (relayConfigs[relay].pin < 16) {
+        if (relayConfigs[relay].pin != 0xFF) {
             digitalWrite(relayConfigs[relay].pin,
                 relayConfigs[relay].activeLow ? !state : state);
         }
@@ -4029,20 +4161,21 @@ void handleGetTime() {
                       lastDS3231SyncEpoch > 0 || lastBrowserSyncEpoch > 0);
     bool ntpFresh = false;
     if (ntpSynced) {
-        unsigned long oldestAge = 0xFFFFFFFFUL;
-        if (lastNTPSync > 0) {
-            unsigned long a = elapsedSince(lastNTPSync);
+        uint64_t now64 = getUptimeMs64();
+        uint64_t oldestAge = UINT64_MAX;
+        if (lastNTPSyncUptime64 > 0 && lastNTPSyncUptime64 <= now64) {
+            uint64_t a = now64 - lastNTPSyncUptime64;
             if (a < oldestAge) oldestAge = a;
         }
-        if (lastBrowserSyncMs > 0) {
-            unsigned long a = elapsedSince(lastBrowserSyncMs);
+        if (lastBrowserSyncUptime64 > 0 && lastBrowserSyncUptime64 <= now64) {
+            uint64_t a = now64 - lastBrowserSyncUptime64;
             if (a < oldestAge) oldestAge = a;
         }
-        if (lastDS3231Sync > 0) {
-            unsigned long a = elapsedSince(lastDS3231Sync);
+        if (lastDS3231SyncUptime64 > 0 && lastDS3231SyncUptime64 <= now64) {
+            uint64_t a = now64 - lastDS3231SyncUptime64;
             if (a < oldestAge) oldestAge = a;
         }
-        if (oldestAge < 172800000UL) ntpFresh = true;
+        if (oldestAge < 172800000ULL) ntpFresh = true;
     }
     server.send(200, "application/json", "{\"time\":\"" + ts + "\",\"day\":\"" + dayStr + "\",\"date\":\"" + dateStr + "\",\"wifi\":" + String(wifiConnected ? "true" : "false") + ",\"ntp\":" + String(ntpFresh ? "true" : "false") + "}");
 }
@@ -4145,9 +4278,8 @@ void handleSaveWiFi() {
             else { sysConfig.sta_password[0] = '\0'; }
         }
         bool saved = saveToFileAtomic(CONFIG_FILE, &sysConfig, sizeof(SystemConfig));
-        bool savedRelay = saveToFileAtomic(RELAY_FILE, relayConfigs, sizeof(RelayConfig) * MAX_RELAYS);
-        if (saved && savedRelay) { configDirty = false; lastConfigSave = millis(); }
-        if (!saved || !savedRelay) {
+        if (saved) { configDirty = false; lastConfigSave = millis(); }
+        if (!saved) {
             strncpy(sysConfig.sta_ssid, oldSsid, 31); sysConfig.sta_ssid[31] = '\0';
             strncpy(sysConfig.sta_password, oldPw, 63); sysConfig.sta_password[63] = '\0';
             server.send(500, "application/json", "{\"success\":false,\"error\":\"Save failed (flash rate limited or low heap)\"}");
@@ -4174,6 +4306,10 @@ void handleWiFiScanStart() {
         return;
     }    
     if (wcsState != WCS_IDLE) { server.send(409, "application/json", "{\"scanning\":false}"); return; }
+    if (scanInProgress && scanStartTime > 0 && elapsedSince(scanStartTime) > SCAN_TIMEOUT_MS) {
+        scanInProgress = false;
+        scanResultCount = -1;
+    }
     if (!scanInProgress) {
         scanInProgress = true;
         scanResultCount = -1;
@@ -4220,6 +4356,9 @@ void handleWiFiToggle() {
             server.send(200, "application/json", 
                 "{\"success\":true,\"enabled\":true}");
         } else {
+            wifiStationEnabled = false;
+            sysConfig.wifi_station_enabled = false;
+            markConfigDirty();
             server.send(200, "application/json", 
                 "{\"success\":true,\"enabled\":false}");
             pendingStationDisable = true;
@@ -4242,6 +4381,9 @@ void handleWiFiToggle() {
         server.send(200, "application/json", 
             "{\"success\":true,\"enabled\":true}");
     } else {
+        wifiStationEnabled = false;
+        sysConfig.wifi_station_enabled = false;
+        markConfigDirty();
         server.send(200, "application/json", 
             "{\"success\":true,\"enabled\":false}");
         pendingStationDisable = true;
@@ -4395,6 +4537,10 @@ void handleGetSystem() {
         server.send(429, "application/json", "{\"error\":\"Too many requests\"}");
         return;
     }    
+    if (ESP.getFreeHeap() < 4096) {
+        server.send(503, "application/json", "{\"error\":\"Low memory, retry shortly\"}");
+        return;
+    }
     String safeHost, safeNtp, safeSsid;
     appendJsonEscaped(safeHost, sysConfig.hostname);
     appendJsonEscaped(safeNtp, sysConfig.ntp_server);
@@ -4415,27 +4561,42 @@ void handleGetSystem() {
                       lastDS3231SyncEpoch > 0 || lastBrowserSyncEpoch > 0);
     bool ntpFresh = false;
     if (ntpSynced) {
-        unsigned long oldestAge = 0xFFFFFFFFUL;
-        if (lastNTPSync > 0) {
-            unsigned long a = elapsedSince(lastNTPSync);
+        uint64_t now64 = getUptimeMs64();
+        uint64_t oldestAge = UINT64_MAX;
+        if (lastNTPSyncUptime64 > 0 && lastNTPSyncUptime64 <= now64) {
+            uint64_t a = now64 - lastNTPSyncUptime64;
             if (a < oldestAge) oldestAge = a;
         }
-        if (lastBrowserSyncMs > 0) {
-            unsigned long a = elapsedSince(lastBrowserSyncMs);
+        if (lastBrowserSyncUptime64 > 0 && lastBrowserSyncUptime64 <= now64) {
+            uint64_t a = now64 - lastBrowserSyncUptime64;
             if (a < oldestAge) oldestAge = a;
         }
-        if (lastDS3231Sync > 0) {
-            unsigned long a = elapsedSince(lastDS3231Sync);
+        if (lastDS3231SyncUptime64 > 0 && lastDS3231SyncUptime64 <= now64) {
+            uint64_t a = now64 - lastDS3231SyncUptime64;
             if (a < oldestAge) oldestAge = a;
         }
-        if (oldestAge < 172800000UL) ntpFresh = true;
+        if (oldestAge < 172800000ULL) ntpFresh = true;
     }
     resp += "\"ntpSynced\":" + String(ntpFresh ? "true" : "false") + ",";
     resp += "\"ntpServer\":\"" + safeNtp + "\",";
     unsigned long syncAge = 0;
-    if (lastNTPSync > 0) syncAge = elapsedSince(lastNTPSync) / 1000UL;
-    else if (lastBrowserSyncMs > 0) syncAge = elapsedSince(lastBrowserSyncMs) / 1000UL;
-    else if (lastDS3231Sync > 0) syncAge = elapsedSince(lastDS3231Sync) / 1000UL;
+    {
+        uint64_t now64 = getUptimeMs64();
+        uint64_t oldest = UINT64_MAX;
+        if (lastNTPSyncUptime64 > 0 && lastNTPSyncUptime64 <= now64) {
+            uint64_t a = now64 - lastNTPSyncUptime64;
+            if (a < oldest) oldest = a;
+        }
+        if (lastBrowserSyncUptime64 > 0 && lastBrowserSyncUptime64 <= now64) {
+            uint64_t a = now64 - lastBrowserSyncUptime64;
+            if (a < oldest) oldest = a;
+        }
+        if (lastDS3231SyncUptime64 > 0 && lastDS3231SyncUptime64 <= now64) {
+            uint64_t a = now64 - lastDS3231SyncUptime64;
+            if (a < oldest) oldest = a;
+        }
+        if (oldest != UINT64_MAX) syncAge = (unsigned long)(oldest / 1000ULL);
+    }
     resp += "\"ntpSyncAge\":" + String(ntpSynced ? (int)syncAge : -1) + ",";
     resp += "\"wifiConnected\":" + String(wifiConnected ? "true" : "false") + ",";
     resp += "\"wifiStationEnabled\":" + String(wifiStationEnabled ? "true" : "false") + ",";
@@ -4527,7 +4688,9 @@ void handleSavePins() {
         return; 
     }    
     int newNumRelays = doc["numRelays"];
-    bool newGlobalActiveLow = doc["globalActiveLow"];    
+    bool newGlobalActiveLow = doc.containsKey("globalActiveLow")
+        ? (doc["globalActiveLow"].is<bool>() ? doc["globalActiveLow"].as<bool>() : relayActiveLow)
+        : relayActiveLow;    
     if (newNumRelays < 1 || newNumRelays > MAX_RELAYS) {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid number of relays\"}"); 
         return;
@@ -4592,7 +4755,7 @@ void handleSavePins() {
         if (idx >= MAX_RELAYS) break;
         relayConfigs[idx].pin = r["pin"];
         relayConfigs[idx].activeLow = r.containsKey("activeLow")
-            ? (bool)r["activeLow"]
+            ? (r["activeLow"].is<bool>() ? r["activeLow"].as<bool>() : pinConfig.globalActiveLow)
             : pinConfig.globalActiveLow;
         {
             const char* nm = r["name"] | (const char*)nullptr;
@@ -4607,6 +4770,9 @@ void handleSavePins() {
         }
         idx++;
     }    
+    for (int j = idx; j < MAX_RELAYS; j++) {
+        relayConfigs[j].pin = 0xFF;
+    }
     bool pinSaved = saveToFileAtomic(PINS_FILE, &pinConfig, sizeof(PinConfig));
     bool relaySaved = pinSaved && saveToFileAtomic(RELAY_FILE, relayConfigs, sizeof(RelayConfig) * MAX_RELAYS);
     if (!pinSaved || !relaySaved) {
